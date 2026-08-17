@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "browsers": {
+    "edge": {
+      "path": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "args": [],
+      "fullscreenArgs": ["--start-fullscreen"]
+    }
+  },
+  "apps": [
+    {
+      "id": "bilibili",
+      "name": "B站",
+      "enabled": true,
+      "icon": "bilibili.png",
+      "launch": {
+        "type": "browser",
+        "browser": "edge",
+        "url": "https://www.bilibili.com",
+        "fullscreen": true
+      }
+    },
+    {
+      "id": "huya",
+      "name": "虎牙",
+      "enabled": true,
+      "icon": "huya.png",
+      "launch": {
+        "type": "program",
+        "path": "C:\\Program Files (x86)\\HuyaClientForWinStore\\huya.exe",
+        "args": []
+      }
+    },
+    {
+      "id": "douyu",
+      "name": "斗鱼",
+      "enabled": true,
+      "icon": "douyu.png",
+      "launch": {
+        "type": "program",
+        "path": "C:\\Program Files (x86)\\DouyuPCClient\\Client\\DouyuLive.exe",
+        "args": []
+      }
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "enabled": true,
+      "icon": "edge.png",
+      "launch": {
+        "type": "browser",
+        "browser": "edge",
+        "fullscreen": true
+      }
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "enabled": true,
+      "icon": "steam.png",
+      "launch": {
+        "type": "program",
+        "path": "C:\\Program Files (x86)\\Steam\\steam.exe",
+        "args": ["steam://open/bigpicture"]
+      }
+    },
+    {
+      "id": "netease",
+      "name": "网易云音乐",
+      "enabled": false,
+      "icon": "netease.png",
+      "launch": {
+        "type": "program",
+        "path": "C:\\Program Files\\NetEase\\CloudMusic\\cloudmusic.exe",
+        "args": []
+      }
+    },
+    {
+      "id": "kugou",
+      "name": "酷狗音乐",
+      "enabled": false,
+      "icon": "kugou.png",
+      "launch": {
+        "type": "program",
+        "path": "C:\\Program Files (x86)\\KuGou\\KGMusic\\KuGou.exe",
+        "args": []
+      }
+    }
+  ]
+}

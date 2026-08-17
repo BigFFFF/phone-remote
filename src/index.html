@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1115">
+  <title>客厅遥控</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1115;
+      --surface: #171d22;
+      --surface-raised: #20282f;
+      --surface-pressed: #2a353e;
+      --line: #303a42;
+      --text: #f4f7f9;
+      --muted: #9ba8b2;
+      --teal: #21b6a6;
+      --danger: #e05d56;
+      --ok: #57c47b;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+      overscroll-behavior: none;
+    }
+    body { min-height: 100dvh; display: flex; justify-content: center; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--surface-raised);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    button:active, button.is-pressed { background: var(--surface-pressed); transform: scale(0.975); }
+    button:focus-visible { outline: 3px solid rgba(90, 141, 238, 0.7); outline-offset: 2px; }
+    button.busy { opacity: 0.62; pointer-events: none; }
+    .icon {
+      width: 23px;
+      height: 23px;
+      display: block;
+      filter: brightness(0) invert(1);
+      pointer-events: none;
+    }
+    .shell {
+      width: min(100%, 540px);
+      height: 100dvh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    header {
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: max(10px, env(safe-area-inset-top)) 14px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { min-width: 0; flex: 1; }
+    h1 { margin: 0; font-size: 19px; line-height: 1.15; font-weight: 760; letter-spacing: 0; }
+    .connection {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+    .dot.connected { background: var(--ok); }
+    .header-button { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; }
+    .views { min-height: 0; overflow: hidden; }
+    .view {
+      display: none;
+      height: 100%;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 14px;
+      scrollbar-width: none;
+    }
+    .view::-webkit-scrollbar { display: none; }
+    .view.active { display: grid; }
+    #view-remote {
+      grid-template-rows: auto minmax(252px, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+    }
+    .quick-actions, .media-controls, .mouse-buttons { display: grid; gap: 8px; }
+    .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .media-controls { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .mouse-buttons { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .action-button {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .action-button.primary { background: #127f76; }
+    .action-button.primary:active { background: #169c90; }
+    .dpad {
+      width: min(100%, 340px);
+      aspect-ratio: 1;
+      justify-self: center;
+      align-self: center;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .dpad button {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .dpad .up { grid-column: 2; grid-row: 1; }
+    .dpad .left { grid-column: 1; grid-row: 2; }
+    .dpad .ok { grid-column: 2; grid-row: 2; background: #e8eef2; color: #10161a; }
+    .dpad .right { grid-column: 3; grid-row: 2; }
+    .dpad .down { grid-column: 2; grid-row: 3; }
+    .dpad .ok .icon { filter: none; opacity: 0.88; }
+    .dpad .icon { width: 31px; height: 31px; }
+    .media-button { min-height: 54px; display: grid; place-items: center; padding: 0; }
+    .volume-combo { position: relative; width: 29px; height: 25px; pointer-events: none; }
+    .volume-combo .icon { position: absolute; left: 0; bottom: 0; width: 22px; height: 22px; }
+    .volume-combo strong {
+      position: absolute;
+      top: -6px;
+      right: -2px;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--text);
+    }
+    #view-touch { grid-template-rows: minmax(280px, 1fr) auto auto; gap: 10px; }
+    .touchpad {
+      position: relative;
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      touch-action: none;
+      user-select: none;
+    }
+    .touchpad::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border: 1px dashed #39454e;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .touchpad.active { border-color: var(--teal); background: #1b242a; }
+    .touchpad-center { display: grid; place-items: center; gap: 8px; font-weight: 700; pointer-events: none; }
+    .touchpad-center .icon { width: 32px; height: 32px; opacity: 0.65; }
+    .mouse-button { min-height: 58px; }
+    .touch-media { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    #view-apps { align-content: start; gap: 12px; }
+    .app-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .app-button {
+      min-height: 104px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 9px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+    .app-icon { width: 46px; height: 46px; object-fit: contain; border-radius: 7px; pointer-events: none; }
+    .app-icon.fallback { padding: 8px; filter: brightness(0) invert(1); opacity: 0.7; }
+    .app-label {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .app-empty {
+      grid-column: 1 / -1;
+      min-height: 160px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    #view-keyboard {
+      grid-template-rows: minmax(190px, 1fr) auto auto;
+      gap: 10px;
+    }
+    .keyboard-input {
+      width: 100%;
+      min-height: 190px;
+      resize: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: 0;
+      padding: 16px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 17px;
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+    .keyboard-input:focus { border-color: var(--teal); }
+    .keyboard-send { min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 8px; background: #127f76; }
+    .keyboard-keys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .keyboard-keys button { min-height: 54px; }
+    nav {
+      min-height: 68px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      padding: 7px 10px max(7px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: #11171b;
+    }
+    .tab-button {
+      min-width: 0;
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: auto auto;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: var(--muted);
+      background: transparent;
+    }
+    .tab-button.active { color: var(--text); background: #263038; }
+    dialog {
+      width: min(90vw, 380px);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 16px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.68); }
+    dialog h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: 0; }
+    dialog p { margin: 0 0 16px; color: var(--muted); }
+    .power-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .power-grid button { min-height: 66px; }
+    .danger { background: #8f3431; }
+    .warning { background: #805b1f; }
+    .dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    #powerMenu .dialog-actions { grid-template-columns: 1fr; }
+    .dialog-actions button { min-height: 52px; }
+    .hidden { display: none !important; }
+    .toast {
+      position: fixed;
+      z-index: 10;
+      left: 50%;
+      bottom: calc(82px + env(safe-area-inset-bottom));
+      transform: translateX(-50%) translateY(18px);
+      width: max-content;
+      max-width: min(88vw, 420px);
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #edf3f5;
+      color: #11171b;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 140ms ease, transform 140ms ease;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @media (max-height: 700px) {
+      header { min-height: 54px; padding-top: max(7px, env(safe-area-inset-top)); }
+      #view-remote { grid-template-rows: auto minmax(224px, 1fr) auto; padding-top: 9px; padding-bottom: 9px; }
+      .dpad { width: min(72vw, 292px); }
+      .action-button, .media-button { min-height: 48px; }
+      nav { min-height: 62px; }
+      .tab-button { min-height: 48px; }
+    }
+    @media (min-width: 700px) {
+      .shell { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand">
+        <h1>客厅遥控</h1>
+        <div class="connection"><span id="dot" class="dot"></span><span id="status">正在连接</span></div>
+      </div>
+      <button id="powerButton" class="header-button" aria-label="电源菜单" title="电源菜单">
+        <img class="icon" src="/assets/power.svg" alt="">
+      </button>
+    </header>
+
+    <div class="views">
+      <section id="view-remote" class="view active" aria-label="遥控按键">
+        <div class="quick-actions">
+          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span>返回</span></button>
+          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span>桌面</span></button>
+          <button class="action-button" data-action="close_active"><img class="icon" src="/assets/x.svg" alt=""><span>关闭</span></button>
+        </div>
+        <div class="dpad">
+          <button class="up" data-action="up" data-repeat aria-label="向上" title="向上"><img class="icon" src="/assets/arrow-up.svg" alt=""></button>
+          <button class="left" data-action="left" data-repeat aria-label="向左" title="向左"><img class="icon" src="/assets/arrow-left.svg" alt=""></button>
+          <button class="ok" data-action="enter" aria-label="确认" title="确认"><img class="icon" src="/assets/circle-dot.svg" alt=""></button>
+          <button class="right" data-action="right" data-repeat aria-label="向右" title="向右"><img class="icon" src="/assets/arrow-right.svg" alt=""></button>
+          <button class="down" data-action="down" data-repeat aria-label="向下" title="向下"><img class="icon" src="/assets/arrow-down.svg" alt=""></button>
+        </div>
+        <div class="media-controls">
+          <button class="media-button" data-action="volume_down" data-repeat aria-label="降低音量" title="降低音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>−</strong></span></button>
+          <button class="media-button" data-action="volume_mute" aria-label="静音" title="静音"><img class="icon" src="/assets/volume-x.svg" alt=""></button>
+          <button class="media-button" data-action="media_play_pause" aria-label="播放或暂停" title="播放或暂停"><img class="icon" src="/assets/play.svg" alt=""></button>
+          <button class="media-button" data-action="volume_up" data-repeat aria-label="提高音量" title="提高音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>+</strong></span></button>
+          <button class="media-button" data-action="f11" aria-label="全屏" title="全屏"><img class="icon" src="/assets/maximize-2.svg" alt=""></button>
+        </div>
+      </section>
+
+      <section id="view-touch" class="view" aria-label="触控板">
+        <div id="touchpad" class="touchpad" aria-label="单指移动，轻点单击，双指滚动" title="单指移动，轻点单击，双指滚动">
+          <div class="touchpad-center"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span>触控板</span></div>
+        </div>
+        <div class="mouse-buttons">
+          <button class="mouse-button" data-mouse-click="left">左键</button>
+          <button class="mouse-button" data-mouse-click="double">双击</button>
+          <button class="mouse-button" data-mouse-click="right">右键</button>
+        </div>
+        <div class="touch-media">
+          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span>返回</span></button>
+          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span>桌面</span></button>
+          <button class="action-button" data-action="media_play_pause"><img class="icon" src="/assets/play.svg" alt=""><span>播放</span></button>
+        </div>
+      </section>
+
+      <section id="view-apps" class="view" aria-label="应用">
+        <div id="appGrid" class="app-grid"></div>
+      </section>
+
+      <section id="view-keyboard" class="view" aria-label="键盘输入">
+        <textarea id="keyboardInput" class="keyboard-input" maxlength="2000" enterkeyhint="send" placeholder="输入文字" autocomplete="off"></textarea>
+        <button id="sendTextButton" class="keyboard-send"><img class="icon" src="/assets/send.svg" alt=""><span>发送</span></button>
+        <div class="keyboard-keys">
+          <button data-action="back">退格</button>
+          <button data-action="enter">回车</button>
+          <button data-action="tab">Tab</button>
+          <button id="clearTextButton">清空</button>
+        </div>
+      </section>
+    </div>
+
+    <nav aria-label="遥控器页面">
+      <button class="tab-button active" data-view="remote"><img class="icon" src="/assets/gamepad-2.svg" alt=""><span>遥控</span></button>
+      <button class="tab-button" data-view="touch"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span>触控</span></button>
+      <button class="tab-button" data-view="apps"><img class="icon" src="/assets/layout-grid.svg" alt=""><span>应用</span></button>
+      <button class="tab-button" data-view="keyboard"><img class="icon" src="/assets/keyboard.svg" alt=""><span>键盘</span></button>
+    </nav>
+  </main>
+
+  <dialog id="powerDialog">
+    <div id="powerMenu">
+      <h2>电源</h2>
+      <div class="power-grid">
+        <button class="warning" data-confirm="sleep">睡眠</button>
+        <button class="danger" data-confirm="restart">重启</button>
+        <button class="danger" data-confirm="shutdown">关机</button>
+      </div>
+      <div class="dialog-actions"><button id="closePower">取消</button></div>
+    </div>
+    <div id="confirmPane" class="hidden">
+      <h2 id="confirmTitle">确认操作</h2>
+      <p id="confirmText"></p>
+      <div class="dialog-actions">
+        <button id="backToPower">返回</button>
+        <button id="confirmAction" class="danger">确认</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status');
+    const toast = document.getElementById('toast');
+    const touchpad = document.getElementById('touchpad');
+    const powerDialog = document.getElementById('powerDialog');
+    const powerMenu = document.getElementById('powerMenu');
+    const confirmPane = document.getElementById('confirmPane');
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmText = document.getElementById('confirmText');
+    const confirmAction = document.getElementById('confirmAction');
+    const appGrid = document.getElementById('appGrid');
+    const keyboardInput = document.getElementById('keyboardInput');
+    const sendTextButton = document.getElementById('sendTextButton');
+    let pendingAction = null;
+    let toastTimer = 0;
+    let wakeLock = null;
+    let appsSignature = '';
+    let lastConfigWarning = '';
+
+    function vibrate(duration = 8) {
+      if (navigator.vibrate) navigator.vibrate(duration);
+    }
+    function showToast(text, duration = 1300) {
+      toast.textContent = text;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+    }
+    function setConnection(connected) {
+      dot.classList.toggle('connected', connected);
+      statusText.textContent = connected ? '已连接' : '连接断开';
+    }
+    async function send(action, button = null) {
+      const appName = button?.dataset.appName;
+      const givesFeedback = action === 'desktop' || action === 'close_active' || action.startsWith('app:');
+      if (button && givesFeedback) button.classList.add('busy');
+      if (appName) showToast(`正在打开${appName}`);
+      try {
+        const response = await fetch('/api/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || '操作失败');
+        setConnection(true);
+        if (appName) showToast(`${appName}已打开`);
+        if (action === 'desktop') showToast('已显示电脑桌面');
+        if (action === 'close_active') showToast('已关闭当前窗口');
+      } catch (error) {
+        setConnection(false);
+        showToast(error.message || '连接失败', 1800);
+      } finally {
+        if (button) button.classList.remove('busy');
+      }
+    }
+    async function sendMouse(payload) {
+      try {
+        const response = await fetch('/api/mouse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error('触控失败');
+      } catch (error) {
+        setConnection(false);
+        showToast(error.message || '连接失败', 1800);
+      }
+    }
+    async function sendKeyboardText() {
+      const value = keyboardInput.value;
+      if (!value) {
+        keyboardInput.focus();
+        return;
+      }
+      sendTextButton.classList.add('busy');
+      try {
+        const response = await fetch('/api/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: value })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || '发送失败');
+        keyboardInput.value = '';
+        setConnection(true);
+        showToast('文字已发送');
+      } catch (error) {
+        setConnection(false);
+        showToast(error.message || '连接失败', 1800);
+      } finally {
+        sendTextButton.classList.remove('busy');
+        keyboardInput.focus();
+      }
+    }
+    async function refresh() {
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        const data = await response.json();
+        setConnection(Boolean(data.ok));
+      } catch {
+        setConnection(false);
+      }
+    }
+    function renderApps(apps) {
+      appGrid.replaceChildren();
+      if (!apps.length) {
+        const empty = document.createElement('div');
+        empty.className = 'app-empty';
+        empty.textContent = '暂无应用';
+        appGrid.append(empty);
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      apps.forEach((app) => {
+        const button = document.createElement('button');
+        button.className = 'app-button';
+        button.dataset.action = `app:${app.id}`;
+        button.dataset.appName = app.name;
+
+        const image = document.createElement('img');
+        image.className = 'app-icon';
+        image.src = app.icon;
+        image.alt = '';
+        image.addEventListener('error', () => {
+          image.src = '/assets/layout-grid.svg';
+          image.classList.add('fallback');
+        }, { once: true });
+
+        const label = document.createElement('span');
+        label.className = 'app-label';
+        label.textContent = app.name;
+        button.append(image, label);
+        fragment.append(button);
+      });
+      appGrid.append(fragment);
+    }
+    async function refreshApps() {
+      try {
+        const response = await fetch('/api/apps', { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || '应用配置不可用');
+        const signature = JSON.stringify(data.apps);
+        if (signature !== appsSignature) {
+          renderApps(data.apps);
+          appsSignature = signature;
+        }
+        if (data.warning && data.warning !== lastConfigWarning) {
+          showToast(`配置错误，已使用上次设置：${data.warning}`, 2600);
+        }
+        lastConfigWarning = data.warning || '';
+      } catch (error) {
+        if (!appsSignature) renderApps([]);
+        showToast(error.message || '应用列表加载失败', 2000);
+      }
+    }
+    function switchView(name) {
+      document.querySelectorAll('.view').forEach((view) => {
+        view.classList.toggle('active', view.id === `view-${name}`);
+      });
+      document.querySelectorAll('.tab-button').forEach((button) => {
+        const active = button.dataset.view === name;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-current', active ? 'page' : 'false');
+      });
+      localStorage.setItem('settop-view', name);
+    }
+    function showPowerMenu() {
+      pendingAction = null;
+      powerMenu.classList.remove('hidden');
+      confirmPane.classList.add('hidden');
+      if (!powerDialog.open) powerDialog.showModal();
+    }
+    document.getElementById('powerButton').addEventListener('click', showPowerMenu);
+    document.getElementById('closePower').addEventListener('click', () => powerDialog.close());
+    document.getElementById('backToPower').addEventListener('click', showPowerMenu);
+    document.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button')) vibrate();
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      if (button._suppressClick) {
+        button._suppressClick = false;
+        return;
+      }
+      if (button.dataset.view) {
+        switchView(button.dataset.view);
+        if (button.dataset.view === 'keyboard') keyboardInput.focus();
+        return;
+      }
+      if (button.dataset.action) {
+        send(button.dataset.action, button);
+        return;
+      }
+      if (button.dataset.mouseClick) {
+        const type = button.dataset.mouseClick;
+        sendMouse(type === 'double' ? { type: 'double' } : { type: 'click', button: type });
+        return;
+      }
+      if (button.dataset.confirm) {
+        pendingAction = button.dataset.confirm;
+        const label = button.textContent.trim();
+        confirmTitle.textContent = `确认${label}`;
+        confirmText.textContent = `${label}会立即执行。`;
+        powerMenu.classList.add('hidden');
+        confirmPane.classList.remove('hidden');
+      }
+    });
+    confirmAction.addEventListener('click', () => {
+      if (pendingAction) send(pendingAction);
+      pendingAction = null;
+      powerDialog.close();
+    });
+    sendTextButton.addEventListener('click', sendKeyboardText);
+    document.getElementById('clearTextButton').addEventListener('click', () => {
+      keyboardInput.value = '';
+      keyboardInput.focus();
+    });
+    keyboardInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendKeyboardText();
+      }
+    });
+    document.querySelectorAll('[data-repeat]').forEach((button) => {
+      let delayTimer = 0;
+      let repeatTimer = 0;
+      const stop = () => {
+        clearTimeout(delayTimer);
+        clearInterval(repeatTimer);
+        button.classList.remove('is-pressed');
+      };
+      button.addEventListener('pointerdown', () => {
+        button._suppressClick = false;
+        button.classList.add('is-pressed');
+        delayTimer = setTimeout(() => {
+          button._suppressClick = true;
+          send(button.dataset.action);
+          repeatTimer = setInterval(() => send(button.dataset.action), 110);
+        }, 430);
+      });
+      button.addEventListener('pointerup', stop);
+      button.addEventListener('pointercancel', stop);
+      button.addEventListener('pointerleave', stop);
+    });
+    const pointers = new Map();
+    let gesture = null;
+    let pendingMove = { dx: 0, dy: 0 };
+    let moveTimer = 0;
+    let lastTapTime = 0;
+    let singleTapTimer = 0;
+    function queueMove(dx, dy) {
+      pendingMove.dx += dx;
+      pendingMove.dy += dy;
+      if (moveTimer) return;
+      moveTimer = setTimeout(() => {
+        sendMouse({ type: 'move', dx: pendingMove.dx * 1.55, dy: pendingMove.dy * 1.55 });
+        pendingMove = { dx: 0, dy: 0 };
+        moveTimer = 0;
+      }, 24);
+    }
+    function registerTap() {
+      const now = Date.now();
+      if (now - lastTapTime < 300 && singleTapTimer) {
+        clearTimeout(singleTapTimer);
+        singleTapTimer = 0;
+        lastTapTime = 0;
+        vibrate(12);
+        sendMouse({ type: 'double' });
+        return;
+      }
+      lastTapTime = now;
+      singleTapTimer = setTimeout(() => {
+        sendMouse({ type: 'click', button: 'left' });
+        singleTapTimer = 0;
+      }, 270);
+    }
+    touchpad.addEventListener('pointerdown', (event) => {
+      touchpad.setPointerCapture(event.pointerId);
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 1) {
+        gesture = {
+          startTime: Date.now(), moved: false, multi: false,
+          lastX: event.clientX, lastY: event.clientY, lastCenterY: event.clientY
+        };
+      } else if (gesture) {
+        gesture.multi = true;
+        gesture.lastCenterY = [...pointers.values()].reduce((sum, point) => sum + point.y, 0) / pointers.size;
+      }
+      touchpad.classList.add('active');
+      event.preventDefault();
+    });
+    touchpad.addEventListener('pointermove', (event) => {
+      if (!pointers.has(event.pointerId) || !gesture) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size >= 2) {
+        const centerY = [...pointers.values()].reduce((sum, point) => sum + point.y, 0) / pointers.size;
+        const dy = centerY - gesture.lastCenterY;
+        if (Math.abs(dy) >= 1) {
+          gesture.moved = true;
+          sendMouse({ type: 'wheel', delta: dy * 9 });
+        }
+        gesture.lastCenterY = centerY;
+      } else if (!gesture.multi) {
+        const dx = event.clientX - gesture.lastX;
+        const dy = event.clientY - gesture.lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 1) {
+          gesture.moved = true;
+          queueMove(dx, dy);
+        }
+        gesture.lastX = event.clientX;
+        gesture.lastY = event.clientY;
+      }
+      event.preventDefault();
+    });
+    function endPointer(event) {
+      pointers.delete(event.pointerId);
+      if (pointers.size === 0) {
+        if (gesture && !gesture.multi && !gesture.moved && Date.now() - gesture.startTime < 280) registerTap();
+        gesture = null;
+        touchpad.classList.remove('active');
+      }
+      event.preventDefault();
+    }
+    touchpad.addEventListener('pointerup', endPointer);
+    touchpad.addEventListener('pointercancel', endPointer);
+    async function keepAwake() {
+      if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch { wakeLock = null; }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+        refreshApps();
+        keepAwake();
+      }
+    });
+    const savedView = localStorage.getItem('settop-view');
+    switchView(['remote', 'touch', 'apps', 'keyboard'].includes(savedView) ? savedView : 'remote');
+    refresh();
+    refreshApps();
+    keepAwake();
+    setInterval(refresh, 4000);
+    setInterval(refreshApps, 5000);
+  </script>
+</body>
+</html>

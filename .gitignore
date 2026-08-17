@@ -1,0 +1,13 @@
+PhoneRemote.exe
+config.json
+
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.spec
+
+*.log
+Thumbs.db
+.DS_Store
