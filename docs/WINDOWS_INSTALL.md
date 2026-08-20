@@ -52,4 +52,3 @@ Power actions must never be exercised by CI.
 Companion reports physical adapters and MAC addresses. Wake readiness also depends on firmware,
 NIC driver, Magic Packet settings, and device power management. The current diagnostic does not
 claim that unsupported firmware or driver settings were changed successfully.
-

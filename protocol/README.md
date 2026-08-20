@@ -14,4 +14,3 @@ remote client. Application launch requests contain only a configured application
 The management API is deliberately excluded from this contract. It is loopback-only,
 protected by an ephemeral process token, and used by Windows Companion rather than mobile
 clients.
-

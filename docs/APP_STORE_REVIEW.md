@@ -17,4 +17,3 @@ Before submission, verify current Apple review rules, local-network privacy requ
 Bonjour service declarations, multicast entitlement status, privacy nutrition labels, screenshots,
 support URL, and reviewer instructions. Do not state that restricted entitlement approval exists
 until Apple has actually granted it.
-

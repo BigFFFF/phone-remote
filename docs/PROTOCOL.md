@@ -41,4 +41,3 @@ PowerShell/CMD command, or arbitrary command line. Request bodies are limited to
 
 Legacy `/api/*` aliases remain temporarily but require the same Credential. New clients use
 `/api/v1/*` exclusively.
-

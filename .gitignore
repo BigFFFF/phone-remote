@@ -10,6 +10,7 @@ dist/
 !packaging/windows/PhoneRemote.spec
 packaging/windows/dist/
 *.egg-info/
+.coverage
 
 # Local identity, credentials, and certificates
 state.json

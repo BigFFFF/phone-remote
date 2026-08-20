@@ -29,4 +29,3 @@ implementation requires it; no approval is claimed.
 
 No workflow in this repository publishes a Production store release. Windows, Play, TestFlight,
 and App Store publication retain a final manual confirmation.
-

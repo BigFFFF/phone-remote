@@ -9,4 +9,3 @@ not use `--insecure-http`. Tests inject Windows-control backends and never execu
 firewall, destructive registry, or application-launch operations.
 
 See the repository-level `README.md` and `docs/DEVELOPMENT.md` for setup commands.
-

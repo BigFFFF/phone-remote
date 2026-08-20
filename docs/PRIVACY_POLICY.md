@@ -34,4 +34,3 @@ delete the local logs while Companion is stopped.
 Use the repository's owner contact channel for privacy questions without attaching secret keys,
 Credentials, pairing codes, keyboard content, or raw state files. Material behavior changes must
 be reflected in this policy before release.
-

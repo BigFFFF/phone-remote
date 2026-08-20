@@ -55,4 +55,3 @@ release gate and is not simulated.
 Maintain `config.json version=1` compatibility. Do not remove a legacy path until the Web Client
 and tests cover the v1 replacement. Update `protocol/openapi.yaml` with API changes and add tests
 for authentication, bounds, error mapping, and command construction.
-
