@@ -1,10 +1,58 @@
 # Phone Remote V1.0 — 完整开发计划
 
-> **文档状态：Current Baseline**
+> **文档状态：Current Baseline + Execution Tracking**
 >
-> **更新日期：2026-08-18**
+> **基线日期：2026-08-18**
+>
+> **本机执行进度更新：2026-08-20**
 >
 > 本文档是 Phone Remote V1.0 当前唯一开发基线。后续开发计划采用增量修改；只有在明确要求输出最新版完整计划时，才重新合并全文。
+
+## 本机执行进度（2026-08-20）
+
+本轮仅执行 Windows/Python Server 及其配套协议、Web、测试、CI、打包、安装器工程和文档；
+**未创建或执行 Flutter/Android/iOS 工程**，相关步骤保留给具备 Flutter/macOS 工具链的后续设备。
+
+状态说明：`完成` 表示已实现并经过本机自动验证；`源码完成` 表示实现和 Mock/静态测试完成，
+仍需真实 Windows/VM 验收；`部分完成` 表示已有产物但仍有明确 Release Gate；`后续设备` 表示本机未执行。
+
+| 原执行步骤 | 状态 | 本轮结果 |
+| --- | --- | --- |
+| 01–02 Inspect / baseline tests | 完成 | 建立原型回归后再替换；最终 Python 测试 51 项通过 |
+| 03–05 Monorepo / move / modularize Server | 完成（Server 范围） | `server/phone_remote` 模块化工程；旧 `src/` 单体已在回归通过后移除 |
+| 06–07 Protocol / OpenAPI v1 | 完成 | `protocol/openapi.yaml` 为 API v1 Source of Truth |
+| 08–13 Identity / Auth / many-to-many / Pairing / Revocation / TLS | 完成 | ECDSA P-256 长期 Identity、可续期证书、独立 scrypt Credential、限速配对和独立撤销 |
+| 14 LAN Discovery | 源码完成 | mDNS `_phone-remote._tcp.local.`；真实多设备发现待局域网验收 |
+| 15–16 Tray / Setup / network / firewall / WoL diagnostics | 源码完成 | 托盘、loopback 管理页、Private+LocalSubnet 规则、Public-only 阻断和适配器诊断 |
+| 17–23 App Discovery / Catalog / Missing | 完成 | Start Menu、Registry、App Paths、MSIX、Known Apps、显式批准及 Missing Detection |
+| 24 Web Fallback migration | 完成 | Pairing、Authentication、API v1、Server Identity 变化阻断 |
+| 25–42 Flutter / Android / iOS | 后续设备 | 本机明确未执行 |
+| 43–44 Security hardening / Python tests | 完成 | 鉴权、过期/限速、边界、注入、遍历、敏感日志、Identity、Firewall 等测试 |
+| 45 Flutter tests | 后续设备 | 本机明确未执行 |
+| 46 PyInstaller | 完成 | `PhoneRemote.exe` 已构建并通过 `--smoke-test` |
+| 47–48 Inno Setup / Firewall lifecycle | 源码完成 | `PhoneRemoteSetup.exe` 编译成功；安装/卸载会管理自有规则和启动项 |
+| 49 Installer migration/upgrade tests | 部分完成 | 迁移和命令生成自动测试完成；Fresh/Upgrade/Uninstall VM 矩阵待执行 |
+| 50 Server CI | 源码完成 | Windows + Python 3.12 + Ruff + pytest + PyInstaller smoke workflow；首次 GitHub run 待 push 后验证 |
+| 51–52 Mobile CI / iOS compile | 后续设备 | 本机明确未执行 |
+| 53 Documentation | 完成（当前真实状态） | 架构、协议、安全、开发、安装、发布、审核准备、隐私和 Release Gate 文档 |
+| 54 Full regression | 完成（Python 范围） | Ruff、51 tests、源码 HTTPS、Windows Schannel、EXE smoke、Inno compile 均通过 |
+| 55 Windows RC installer | 部分完成 | 未签名安装器产物已生成；真实安装矩阵和代码签名仍是 Release Gate |
+| 56–57 Android/iOS readiness | 后续设备 | 本机明确未执行 |
+| 58 Release Gate report | 完成 | 见 `docs/RELEASE_GATE.md` |
+
+本轮自动验证结果：
+
+```text
+Python 3.12.10
+Ruff format/check: pass
+pytest: 51 passed
+HTTPS source runtime: pass (Python TLS + Windows Schannel)
+PyInstaller: PhoneRemote.exe build + smoke pass
+Inno Setup 6.7.3: PhoneRemoteSetup.exe compile pass
+```
+
+未执行且不得误标为完成：Flutter 全部步骤、真实 Installer 的系统变更/升级/卸载 VM 矩阵、
+代码签名、GitHub 托管 CI 首次运行、商店账号/Signing/Entitlement/Production 发布。
 
 ---
 
@@ -2480,34 +2528,34 @@ docs/STORE_RELEASE.md
 
 - [ ] 正式 Installer 可安装
 - [ ] Server 普通用户权限运行
-- [ ] Start with Windows
-- [ ] Tray UI
-- [ ] API v1
-- [ ] Persistent Server Identity
-- [ ] Secure Pairing
-- [ ] 一次 Pair 长期有效
-- [ ] 多 Mobile Pairing
-- [ ] 多 Mobile 同时控制
-- [ ] Independent Credential
-- [ ] Independent Revocation
-- [ ] Revoke All
-- [ ] TLS
-- [ ] Server identity validation
-- [ ] LAN Discovery
-- [ ] Keyboard
-- [ ] Mouse
-- [ ] Media
-- [ ] Power
-- [ ] App Discovery
-- [ ] Known App matching
-- [ ] App Catalog GUI
-- [ ] Missing App detection
-- [ ] Web Fallback
-- [ ] Old config compatibility
-- [ ] Private Firewall Rule
-- [ ] LocalSubnet restriction
-- [ ] Public Network blocked
-- [ ] WoL diagnostics
+- [x] Start with Windows（源码/安装器已实现）
+- [x] Tray UI（源码完成）
+- [x] API v1
+- [x] Persistent Server Identity
+- [x] Secure Pairing
+- [x] 一次 Pair 长期有效
+- [x] 多 Mobile Pairing
+- [x] 多 Mobile 同时控制
+- [x] Independent Credential
+- [x] Independent Revocation
+- [x] Revoke All
+- [x] TLS
+- [x] Server identity validation
+- [x] LAN Discovery（源码完成，待多设备验收）
+- [x] Keyboard（Mock 验证）
+- [x] Mouse（Mock 验证）
+- [x] Media（Mock 验证）
+- [x] Power（Mock 验证，测试未执行真实电源操作）
+- [x] App Discovery
+- [x] Known App matching
+- [x] App Catalog GUI
+- [x] Missing App detection
+- [x] Web Fallback
+- [x] Old config compatibility
+- [x] Private Firewall Rule（命令/安装脚本验证）
+- [x] LocalSubnet restriction（命令/安装脚本验证）
+- [x] Public Network blocked（规则及运行时策略验证）
+- [x] WoL diagnostics（源码完成）
 
 ## Android
 
@@ -2557,29 +2605,29 @@ docs/STORE_RELEASE.md
 
 ## Security
 
-- [ ] 未 Pair Client 无法控制
-- [ ] Invalid Credential rejected
-- [ ] Revoked Client rejected
-- [ ] Revoking one Client does not affect others
-- [ ] Pair brute force mitigated
-- [ ] Pair code expires
-- [ ] Unexpected Server Identity change detected
-- [ ] Arbitrary executable impossible
-- [ ] Arbitrary shell command impossible
-- [ ] Discovered Apps not auto-trusted
-- [ ] Sensitive text not logged
-- [ ] Credential not logged
-- [ ] Public Firewall Profile not exposed
+- [x] 未 Pair Client 无法控制
+- [x] Invalid Credential rejected
+- [x] Revoked Client rejected
+- [x] Revoking one Client does not affect others
+- [x] Pair brute force mitigated
+- [x] Pair code expires
+- [x] Unexpected Server Identity change detected
+- [x] Arbitrary executable impossible
+- [x] Arbitrary shell command impossible
+- [x] Discovered Apps not auto-trusted
+- [x] Sensitive text not logged
+- [x] Credential not logged
+- [x] Public Firewall Profile not exposed
 
 ## Installer
 
 - [ ] Fresh install
 - [ ] Upgrade
-- [ ] Old config migration
-- [ ] Identity retained
-- [ ] Pairings retained
-- [ ] Firewall install/repair
-- [ ] Startup
+- [x] Old config migration（自动测试）
+- [x] Identity retained（持久化布局/自动测试）
+- [x] Pairings retained（持久化布局/自动测试）
+- [x] Firewall install/repair（命令/编译验证）
+- [x] Startup（源码/编译验证）
 - [ ] Uninstall
 - [ ] Reinstall
 - [ ] Settings retention
@@ -2587,24 +2635,24 @@ docs/STORE_RELEASE.md
 
 ## CI
 
-- [ ] Server CI
+- [x] Server CI（workflow 已实现，首次托管运行待验证）
 - [ ] Mobile CI
 - [ ] `protocol/**` triggers both
-- [ ] PyInstaller smoke build
+- [x] PyInstaller smoke build
 - [ ] Android build check
 - [ ] iOS compile check when feasible
 
 ## Documentation
 
-- [ ] README
-- [ ] ARCHITECTURE
-- [ ] PROTOCOL
-- [ ] SECURITY
-- [ ] DEVELOPMENT
-- [ ] WINDOWS_INSTALL
-- [ ] STORE_RELEASE
-- [ ] APP_STORE_REVIEW
-- [ ] PRIVACY_POLICY
+- [x] README
+- [x] ARCHITECTURE
+- [x] PROTOCOL
+- [x] SECURITY
+- [x] DEVELOPMENT
+- [x] WINDOWS_INSTALL
+- [x] STORE_RELEASE
+- [x] APP_STORE_REVIEW
+- [x] PRIVACY_POLICY
 
 ---
 
@@ -2797,5 +2845,3 @@ Windows 环境可以维护：
 但正式 iOS Build、Archive、Signing 必须在 macOS + Xcode 环境完成。
 
 ---
-
-
