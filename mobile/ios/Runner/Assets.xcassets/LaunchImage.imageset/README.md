@@ -1,5 +1,4 @@
 # Launch Screen Assets
 
-You can customize the launch screen with your own desired assets by replacing the image files in this directory.
-
-You can also do it by opening your Flutter project's Xcode project with `open ios/Runner.xcworkspace`, selecting `Runner/Assets.xcassets` in the Project Navigator and dropping in the desired images.
+Phone Remote uses the branded rounded app tile in this image set. The launch storyboard presents it
+at 168 points on the same deep-navy background used by the Android launch theme.

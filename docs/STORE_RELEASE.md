@@ -13,19 +13,21 @@ or store approval exists.
 ## Android
 
 The Flutter project, Keystore-backed credential storage, native UI, Android WoL, API 36 build
-configuration, debug APK, and unsigned Release APK/AAB structure are implemented. Remaining gates
-are a real signing key, signed AAB, physical-device LAN/control/WoL matrix, Play Console listing,
-privacy forms, and internal testing. At release time re-check current Google Play target API and
-signing requirements rather than relying on a dated plan statement.
+configuration, adaptive/round/legacy launcher artwork, Android 12/legacy launch resources, debug
+APK, and unsigned Release APK/AAB structure are implemented. Remaining gates are a real signing
+key, signed AAB, physical-device LAN/control/WoL matrix, Play Console listing, privacy forms, and
+internal testing. At release time re-check current Google Play target API and signing requirements
+rather than relying on a dated plan statement.
 
 ## iOS
 
 The Flutter/iOS project, Keychain-backed credential storage, Bonjour declarations, local-network
-privacy string, shared native UI, and graceful unavailable Wake capability are implemented in
-source. Xcode no-sign compilation, physical-device validation, signing, TestFlight, and App Store
-metadata remain. Formal build/archive/signing requires macOS, Xcode 16+ (or the then-current
-supported baseline), and CocoaPods. Multicast networking entitlement must be requested from Apple
-if a future iOS WoL implementation requires it; no approval is claimed.
+privacy string, exact-size opaque App Icons, branded Launch Screen, shared native UI, and graceful
+unavailable Wake capability are implemented in source. Xcode no-sign compilation, physical-device
+validation, signing, TestFlight, screenshots, and App Store metadata remain. Formal
+build/archive/signing requires macOS, Xcode 16+ (or the then-current supported baseline), and
+CocoaPods. Multicast networking entitlement must be requested from Apple if a future iOS WoL
+implementation requires it; no approval is claimed.
 
 ## Production control
 

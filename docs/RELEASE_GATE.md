@@ -1,6 +1,6 @@
 # Release gate report
 
-Status as of 2026-08-20. `Complete` means implemented in source and covered by local tests;
+Status as of 2026-08-21. `Complete` means implemented in source and covered by local tests;
 installer/real-device items remain separate acceptance gates.
 
 | Area | Status | Evidence / remaining gate |
@@ -18,8 +18,8 @@ installer/real-device items remain separate acceptance gates.
 | Server CI | Complete in source | first GitHub run remains external |
 | Flutter core architecture | Complete in source | native onboarding, discovery, pairing, secure multi-PC storage, reconnect and Demo |
 | Flutter remote controls | Complete in source | Touchpad throttling, D-pad, keyboard, media, approved apps and guarded power UI; real-phone UX acceptance remains |
-| Android/WoL | Debug APK built | API 36 build passed; physical-device LAN/WoL and signed AAB remain |
-| iOS | Project ready in source | Keychain storage and graceful unavailable Wake capability; macOS/Xcode no-sign CI run remains |
+| Android/WoL | APK/AAB structure built | API 36, adaptive/round/legacy icons and Android 12/legacy Splash build passed; physical-device LAN/WoL and signed AAB remain |
+| iOS | Project ready in source | Opaque exact-size App Icons, branded Launch Screen, Keychain storage and graceful unavailable Wake capability; macOS/Xcode no-sign CI run remains |
 | Mobile CI | Complete in source | Android analyze/test/APK plus macOS iOS no-sign workflow; first hosted run remains external |
 | Store signing/accounts/entitlements | External | see `STORE_RELEASE.md` |
 

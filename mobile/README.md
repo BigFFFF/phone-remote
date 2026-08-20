@@ -5,6 +5,10 @@ mDNS/manual discovery, pinned TLS identity pairing, multi-PC storage, secure per
 Touchpad-first remote controls, approved apps, power controls, Android Wake on LAN, and an explicit
 offline Demo mode.
 
+The production launcher artwork master is `assets/branding/app_icon_master.png`. Android uses a
+separate vector foreground plus gradient adaptive background, while iOS receives opaque, exact-size
+AppIcon PNGs. Launch screens use the same deep-navy visual system without network-dependent assets.
+
 ## Toolchain
 
 - Flutter 3.24.5 / Dart 3.5.4

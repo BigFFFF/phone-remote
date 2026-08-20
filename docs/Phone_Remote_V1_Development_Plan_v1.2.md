@@ -33,7 +33,7 @@ Windows 无法执行的 iOS/Xcode 编译及必须使用物理设备/VM 的验收
 | 33–38 Remote / Touchpad / D-pad / Keyboard / Media / Apps / Power | 源码完成 | Touchpad 默认、33 ms 合并节流、双指手势、原生控制 UI 和 API v1 命令；物理手机 UX/真实控制待验收 |
 | 39–42 Android WoL / iOS capability / Auto Wake / Demo | 源码完成 | Android Magic Packet（定向广播优先）、iOS graceful unavailable、唤醒重试和显式 Demo；物理 LAN/WoL 待验收 |
 | 43–44 Security hardening / Python tests | 完成 | 鉴权、过期/限速、边界、注入、遍历、敏感日志、Identity、Firewall 等测试 |
-| 45 Flutter tests | 完成（源码范围） | 31 项 unit/widget 测试通过；另有 1 项 opt-in 真实 Python HTTPS 配对/重连集成通过 |
+| 45 Flutter tests | 完成（源码范围） | 34 项 unit/widget/resource 测试通过；另有 1 项 opt-in 真实 Python HTTPS 配对/重连集成通过 |
 | 46 PyInstaller | 完成 | `PhoneRemote.exe` 已构建并通过 `--smoke-test` |
 | 47–48 Inno Setup / Firewall lifecycle | 源码完成 | `PhoneRemoteSetup.exe` 编译成功；安装/卸载会管理自有规则和启动项 |
 | 49 Installer migration/upgrade tests | 部分完成 | 迁移和命令生成自动测试完成；Fresh/Upgrade/Uninstall VM 矩阵待执行 |
@@ -41,10 +41,10 @@ Windows 无法执行的 iOS/Xcode 编译及必须使用物理设备/VM 的验收
 | 51 Mobile CI | 源码完成 | 固定 Flutter 3.24.5/JDK 17，Android analyze/test/debug APK/unsigned AAB；`protocol/**` 同时触发 |
 | 52 iOS no-sign compile | 源码完成 | macOS 15 no-sign workflow 已加入；首次托管 Xcode 运行待 push 后验证 |
 | 53 Documentation | 完成（当前真实状态） | 架构、协议、安全、开发、安装、发布、审核准备、隐私和 Release Gate 文档 |
-| 54 Full regression | 完成（本机可执行范围） | Ruff、52 Python tests、31 Flutter tests、真实跨栈 HTTPS、Android APK/AAB、EXE smoke、Inno compile 均通过 |
+| 54 Full regression | 完成（本机可执行范围） | Ruff、52 Python tests、34 Flutter tests、真实跨栈 HTTPS、Android APK/AAB、EXE smoke、Inno compile 均通过 |
 | 55 Windows RC installer | 部分完成 | 未签名安装器产物已生成；真实安装矩阵和代码签名仍是 Release Gate |
-| 56 Android readiness | 部分完成 | Debug APK、unsigned Release APK/AAB 均构建成功；签名、物理机矩阵和商店 RC 待执行 |
-| 57 iOS readiness | 源码完成 | Bundle ID、本地网络/Bonjour 权限、Keychain-backed storage、Wake 降级和 no-sign CI 已配置；macOS 首次编译待验证 |
+| 56 Android readiness | 部分完成 | Adaptive/round/legacy icons、品牌 Splash、Debug APK、unsigned Release APK/AAB 均验证；签名、物理机矩阵和商店 RC 待执行 |
+| 57 iOS readiness | 源码完成 | Bundle ID、权限、Keychain-backed storage、正式不透明 App Icons、品牌 Launch Screen、Wake 降级和 no-sign CI 已配置；macOS 首次编译待验证 |
 | 58 Release Gate report | 完成 | 见 `docs/RELEASE_GATE.md` |
 
 本轮自动验证结果：
@@ -58,7 +58,7 @@ PyInstaller: PhoneRemote.exe build + smoke pass
 Inno Setup 6.7.3: PhoneRemoteSetup.exe compile pass
 Flutter 3.24.5 / Dart 3.5.4 / JDK 17 / Android API 36
 flutter analyze: pass
-flutter test: 31 passed (live integration normally skipped)
+flutter test: 34 passed (live integration normally skipped)
 Flutter ↔ real Python HTTPS pairing/reconnect integration: pass
 Android debug APK: pass
 Android unsigned release APK/AAB: pass
@@ -2573,6 +2573,8 @@ docs/STORE_RELEASE.md
 
 ## Android
 
+- [x] Adaptive / round / legacy launcher icons（资源编译与尺寸测试）
+- [x] Branded launch screen（Android 12 与 legacy resources）
 - [x] Discovery（源码/Mock，待真实多设备 LAN 验收）
 - [x] Manual device（HTTPS-only 输入校验）
 - [x] Multi-PC
@@ -2598,6 +2600,8 @@ docs/STORE_RELEASE.md
 
 ## iOS
 
+- [x] App Icons（全部槽位精确尺寸且无 Alpha）
+- [x] Launch Screen（静态品牌资源与 Auto Layout 配置）
 - [x] Discovery（源码/权限配置，待真实设备）
 - [x] Manual device
 - [x] Multi-PC
