@@ -1,0 +1,24 @@
+def useChinaMirrors = System.getenv("PHONE_REMOTE_CHINA_MIRRORS") == "true"
+
+allprojects {
+    repositories {
+        if (useChinaMirrors) {
+            maven { url "https://maven.aliyun.com/repository/google" }
+            maven { url "https://maven.aliyun.com/repository/public" }
+        }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

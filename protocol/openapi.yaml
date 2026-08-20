@@ -174,7 +174,9 @@ components:
         name: { type: string }
         version: { type: string }
         apiVersion: { const: 1 }
-        pairing: { type: boolean }
+        pairing:
+          type: boolean
+          description: True only while a pairing session is already active; false does not disable POST /pair/request.
         identityFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
         certificateFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
     PairingSession:
@@ -204,7 +206,7 @@ components:
         identityFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
     ServerStatus:
       type: object
-      required: [ok, serverId, name, version, apiVersion, addresses, port, configOk]
+      required: [ok, serverId, name, version, apiVersion, addresses, wakeTargets, port, configOk]
       properties:
         ok: { const: true }
         serverId: { type: string }
@@ -212,9 +214,21 @@ components:
         version: { type: string }
         apiVersion: { const: 1 }
         addresses: { type: array, items: { type: string, format: ipv4 } }
+        wakeTargets:
+          type: array
+          description: Active physical adapters that the paired client may use for Wake on LAN.
+          items: { $ref: "#/components/schemas/WakeTarget" }
         port: { type: integer, minimum: 1, maximum: 65535 }
         configOk: { type: boolean }
         configError: { type: [string, "null"] }
+    WakeTarget:
+      type: object
+      additionalProperties: false
+      required: [mac, address, broadcast]
+      properties:
+        mac: { type: string, pattern: "^[A-Fa-f0-9]{2}([:-][A-Fa-f0-9]{2}){5}$" }
+        address: { type: string, format: ipv4 }
+        broadcast: { type: string, format: ipv4 }
     ConfiguredApp:
       type: object
       required: [id, name, available, icon]
@@ -231,6 +245,7 @@ components:
         action:
           type: string
           enum: [up, down, left, right, enter, tab, back, escape, space, f11, desktop, close_active, volume_up, volume_down, volume_mute, media_play_pause, media_next, media_previous]
+          description: back is the Backspace key; escape is the product-level Back/Escape action.
     MouseRequest:
       oneOf:
         - type: object

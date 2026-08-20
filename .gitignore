@@ -21,3 +21,10 @@ server.key
 *.log
 Thumbs.db
 .DS_Store
+
+# Mobile signing material
+*.jks
+*.keystore
+key.properties
+keystore.properties
+!*.properties.example

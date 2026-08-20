@@ -16,7 +16,11 @@ installer/real-device items remain separate acceptance gates.
 | PyInstaller executable | Built | local `PhoneRemote.exe --smoke-test` passed; unsigned |
 | Inno Setup installer | Built | `PhoneRemoteSetup.exe` compiled; fresh/upgrade/uninstall VM matrix remains |
 | Server CI | Complete in source | first GitHub run remains external |
-| Flutter Android/iOS | Deferred | intentionally not executed on this computer |
+| Flutter core architecture | Complete in source | native onboarding, discovery, pairing, secure multi-PC storage, reconnect and Demo |
+| Flutter remote controls | Complete in source | Touchpad throttling, D-pad, keyboard, media, approved apps and guarded power UI; real-phone UX acceptance remains |
+| Android/WoL | Debug APK built | API 36 build passed; physical-device LAN/WoL and signed AAB remain |
+| iOS | Project ready in source | Keychain storage and graceful unavailable Wake capability; macOS/Xcode no-sign CI run remains |
+| Mobile CI | Complete in source | Android analyze/test/APK plus macOS iOS no-sign workflow; first hosted run remains external |
 | Store signing/accounts/entitlements | External | see `STORE_RELEASE.md` |
 
 No release, store upload, developer-account creation, signing, or entitlement request was

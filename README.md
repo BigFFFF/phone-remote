@@ -3,8 +3,8 @@
 **Phone Remote — Cross-platform remote control for Windows PCs**
 
 Phone Remote 是一个面向用户自有 Windows PC 的可信局域网遥控系统。当前仓库包含
-Windows/Python Companion、HTTPS API、Windows 管理界面和 Web Fallback Client；原生
-Flutter Android/iOS Client 将在具备 Flutter 工具链的其他设备继续开发。
+Windows/Python Companion、HTTPS API、Windows 管理界面、Web Fallback Client，以及
+原生 Flutter Android/iOS Client。
 
 ## 当前功能
 
@@ -17,21 +17,23 @@ Flutter Android/iOS Client 将在具备 Flutter 工具链的其他设备继续�
 - mDNS/DNS-SD `_phone-remote._tcp.local.` 局域网发现
 - 托盘入口、仅本机管理页、配对设备和应用 Catalog 管理
 - Web Fallback Client 的 Pairing、Authentication 和 Server Identity 检查
+- Flutter 原生 Onboarding、mDNS/手工地址发现、安全配对、多 PC 与 Favorite
+- Flutter Touchpad-first Remote、D-pad、Unicode Keyboard、Media、Apps 和 Power UI
+- Android Wake on LAN、自动唤醒重连、iOS 能力降级和显式离线 Demo Mode
 - Rotating Log、Private/LocalSubnet 防火墙规则、Public Network 运行时阻断
-- PyInstaller、Inno Setup 安装器工程和 Windows GitHub Actions CI
+- PyInstaller、Inno Setup 安装器工程、Server/Mobile GitHub Actions CI
 
 ## 仓库结构
 
 ```text
 server/                 Python 3.12 Windows Companion、测试和 Web Client
+mobile/                 Flutter 3.24.5 Android/iOS Client 与测试
 protocol/openapi.yaml   API v1 正式协议边界
 packaging/windows/      PyInstaller 与 Inno Setup 工程
 docs/                   架构、安全、开发、安装、隐私和发布文档
-.github/workflows/      Server CI
+.github/workflows/      Server CI 与 Mobile CI
 config.example.json     version=1 配置兼容性样例
 ```
-
-`mobile/` 尚未在此设备创建；这项状态有意保留，以免把未执行的 Flutter 工作标成完成。
 
 ## 从源码运行
 
@@ -70,7 +72,8 @@ Set-Location ..
 
 完整开发、协议、安全和安装说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、
 [docs/PROTOCOL.md](docs/PROTOCOL.md)、[docs/SECURITY.md](docs/SECURITY.md) 和
-[docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)。
+[docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)。移动端工具链、国内镜像和真实 HTTPS
+联调说明见 [mobile/README.md](mobile/README.md)。
 
 ## 安全边界
 

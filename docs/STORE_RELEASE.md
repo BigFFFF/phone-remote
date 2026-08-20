@@ -10,20 +10,22 @@ or store approval exists.
 - Installer VM matrix and RC acceptance: pending final RC execution
 - GitHub Release publication: manual and not performed automatically
 
-## Android (deferred on this computer)
+## Android
 
-The Flutter project, secure storage, native UI, Android WoL, API 36 build configuration, signing,
-AAB, Play Console listing, privacy forms, and internal testing are not implemented here. At
-release time re-check current Google Play target API and signing requirements rather than relying
-on a dated plan statement.
+The Flutter project, Keystore-backed credential storage, native UI, Android WoL, API 36 build
+configuration, debug APK, and unsigned Release APK/AAB structure are implemented. Remaining gates
+are a real signing key, signed AAB, physical-device LAN/control/WoL matrix, Play Console listing,
+privacy forms, and internal testing. At release time re-check current Google Play target API and
+signing requirements rather than relying on a dated plan statement.
 
-## iOS (deferred on this computer)
+## iOS
 
-The Flutter/iOS project, Keychain storage, Bonjour declarations, local-network privacy strings,
-Wake capability abstraction, Xcode build, signing, TestFlight, and App Store metadata remain.
-Formal build/archive/signing requires macOS, Xcode 16+ (or the then-current supported baseline),
-and CocoaPods. Multicast networking entitlement must be requested from Apple if the final WoL
-implementation requires it; no approval is claimed.
+The Flutter/iOS project, Keychain-backed credential storage, Bonjour declarations, local-network
+privacy string, shared native UI, and graceful unavailable Wake capability are implemented in
+source. Xcode no-sign compilation, physical-device validation, signing, TestFlight, and App Store
+metadata remain. Formal build/archive/signing requires macOS, Xcode 16+ (or the then-current
+supported baseline), and CocoaPods. Multicast networking entitlement must be requested from Apple
+if a future iOS WoL implementation requires it; no approval is claimed.
 
 ## Production control
 

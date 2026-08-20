@@ -1,12 +1,13 @@
 # App Store review preparation
 
-The native Flutter mobile application is deferred and has not been created on this Windows
-computer. This document defines the review target for the later mobile phase; it does not mark
-that phase complete.
+The native Flutter mobile application now exists for Android and iOS. Source/widget validation is
+complete on Windows; physical iPhone UX, macOS/Xcode compilation, signing, entitlement, TestFlight,
+and App Store review remain external gates.
 
-The shipping app must provide native Flutter onboarding, device management, pairing, Remote with
+The current app provides native Flutter onboarding, device management, pairing, Remote with
 Touchpad as the default mode, optional D-pad, keyboard quick access, Media, Apps, Power, and Demo
-Mode. Web Fallback is not a substitute for the native product UI.
+Mode. These flows still require final physical-device acceptance. Web Fallback is not a substitute
+for the native product UI.
 
 Demo Mode must avoid LAN access while demonstrating remote interactions, apps, media, power
 confirmation, and online/offline states, with a visible `Demo` label. Review notes should explain

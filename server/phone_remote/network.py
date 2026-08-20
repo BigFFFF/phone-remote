@@ -5,6 +5,7 @@ import json
 import socket
 import subprocess
 import sys
+import time
 import winreg
 from collections.abc import Sequence
 from contextlib import suppress
@@ -44,6 +45,10 @@ class NetworkProfile:
 
 
 class NetworkDiagnostics:
+    def __init__(self) -> None:
+        self._wake_targets_cache: list[dict[str, str]] = []
+        self._wake_targets_cached_at = 0.0
+
     def profiles(self) -> list[NetworkProfile]:
         if sys.platform != "win32":
             return []
@@ -104,6 +109,81 @@ class NetworkDiagnostics:
             )
             result[key] = completed.returncode == 0
         return result
+
+    def wake_targets(self) -> list[dict[str, str]]:
+        if sys.platform != "win32":
+            return []
+        now = time.monotonic()
+        if now - self._wake_targets_cached_at < 60:
+            return list(self._wake_targets_cache)
+        script = (
+            "$items=Get-NetIPConfiguration -ErrorAction SilentlyContinue | "
+            "Where-Object {$_.NetAdapter.Status -eq 'Up' -and $_.NetAdapter.HardwareInterface};"
+            "$items|ForEach-Object{$adapter=$_.NetAdapter;"
+            "$_.IPv4Address|ForEach-Object{[pscustomobject]@{mac=$adapter.MacAddress;"
+            "address=$_.IPAddress;prefixLength=$_.PrefixLength}}}|ConvertTo-Json -Compress"
+        )
+        try:
+            completed = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+                check=False,
+                shell=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            self._wake_targets_cached_at = now
+            return list(self._wake_targets_cache)
+        if completed.returncode or not completed.stdout.strip():
+            self._wake_targets_cached_at = now
+            return list(self._wake_targets_cache)
+        try:
+            value: Any = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            self._wake_targets_cached_at = now
+            return list(self._wake_targets_cache)
+        entries = value if isinstance(value, list) else [value]
+        targets: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            try:
+                address = ipaddress.IPv4Address(str(item.get("address", "")))
+                prefix_length = int(item.get("prefixLength", -1))
+                network = ipaddress.IPv4Network(f"{address}/{prefix_length}", strict=False)
+            except (
+                ipaddress.AddressValueError,
+                ipaddress.NetmaskValueError,
+                TypeError,
+                ValueError,
+            ):
+                continue
+            raw_mac = "".join(
+                character for character in str(item.get("mac", "")) if character.isalnum()
+            )
+            if len(raw_mac) != 12 or any(
+                character not in "0123456789abcdefABCDEF" for character in raw_mac
+            ):
+                continue
+            mac = ":".join(raw_mac[index : index + 2] for index in range(0, 12, 2)).upper()
+            key = (mac, str(address))
+            if key in seen:
+                continue
+            seen.add(key)
+            targets.append(
+                {
+                    "mac": mac,
+                    "address": str(address),
+                    "broadcast": str(network.broadcast_address),
+                }
+            )
+        self._wake_targets_cache = targets
+        self._wake_targets_cached_at = now
+        return list(targets)
 
 
 def firewall_install_commands(executable: Path, port: int) -> list[list[str]]:

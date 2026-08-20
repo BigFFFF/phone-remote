@@ -10,15 +10,16 @@
 
 ## 本机执行进度（2026-08-20）
 
-本轮仅执行 Windows/Python Server 及其配套协议、Web、测试、CI、打包、安装器工程和文档；
-**未创建或执行 Flutter/Android/iOS 工程**，相关步骤保留给具备 Flutter/macOS 工具链的后续设备。
+本轮已继续执行 Flutter Android/iOS 工程、移动端核心架构、真实 Python HTTPS 联调、
+Android 构建、Mobile CI 和开发工具链恢复；Windows/Python Server 也在本机重新全量验证。
+Windows 无法执行的 iOS/Xcode 编译及必须使用物理设备/VM 的验收仍保留为 Release Gate。
 
 状态说明：`完成` 表示已实现并经过本机自动验证；`源码完成` 表示实现和 Mock/静态测试完成，
-仍需真实 Windows/VM 验收；`部分完成` 表示已有产物但仍有明确 Release Gate；`后续设备` 表示本机未执行。
+仍需真实 Windows/VM/手机验收；`部分完成` 表示已有产物但仍有明确 Release Gate。
 
 | 原执行步骤 | 状态 | 本轮结果 |
 | --- | --- | --- |
-| 01–02 Inspect / baseline tests | 完成 | 建立原型回归后再替换；最终 Python 测试 51 项通过 |
+| 01–02 Inspect / baseline tests | 完成 | 建立原型回归后再替换；最终 Python 测试 52 项通过 |
 | 03–05 Monorepo / move / modularize Server | 完成（Server 范围） | `server/phone_remote` 模块化工程；旧 `src/` 单体已在回归通过后移除 |
 | 06–07 Protocol / OpenAPI v1 | 完成 | `protocol/openapi.yaml` 为 API v1 Source of Truth |
 | 08–13 Identity / Auth / many-to-many / Pairing / Revocation / TLS | 完成 | ECDSA P-256 长期 Identity、可续期证书、独立 scrypt Credential、限速配对和独立撤销 |
@@ -26,18 +27,24 @@
 | 15–16 Tray / Setup / network / firewall / WoL diagnostics | 源码完成 | 托盘、loopback 管理页、Private+LocalSubnet 规则、Public-only 阻断和适配器诊断 |
 | 17–23 App Discovery / Catalog / Missing | 完成 | Start Menu、Registry、App Paths、MSIX、Known Apps、显式批准及 Missing Detection |
 | 24 Web Fallback migration | 完成 | Pairing、Authentication、API v1、Server Identity 变化阻断 |
-| 25–42 Flutter / Android / iOS | 后续设备 | 本机明确未执行 |
+| 25–28 Flutter project / architecture / multi-PC / onboarding | 完成 | Flutter 3.24.5 正式 Android+iOS 工程、分层服务、真实/演示仓库、安全多 PC 元数据和原生 Onboarding |
+| 29 Discovery / Manual Address | 源码完成 | mDNS `_phone-remote._tcp.local`、TXT/SRV/A 合并、HTTPS-only 手工地址和测试；真实多设备 LAN 待验收 |
+| 30–32 Pairing / Secure Credential / trusted reconnect | 完成（源码与本机联调） | 自签名 TLS 证书原始 SPKI Identity 校验、六位码、独立 Credential、Bearer 重连；真实 Python Server HTTPS 集成通过 |
+| 33–38 Remote / Touchpad / D-pad / Keyboard / Media / Apps / Power | 源码完成 | Touchpad 默认、33 ms 合并节流、双指手势、原生控制 UI 和 API v1 命令；物理手机 UX/真实控制待验收 |
+| 39–42 Android WoL / iOS capability / Auto Wake / Demo | 源码完成 | Android Magic Packet（定向广播优先）、iOS graceful unavailable、唤醒重试和显式 Demo；物理 LAN/WoL 待验收 |
 | 43–44 Security hardening / Python tests | 完成 | 鉴权、过期/限速、边界、注入、遍历、敏感日志、Identity、Firewall 等测试 |
-| 45 Flutter tests | 后续设备 | 本机明确未执行 |
+| 45 Flutter tests | 完成（源码范围） | 31 项 unit/widget 测试通过；另有 1 项 opt-in 真实 Python HTTPS 配对/重连集成通过 |
 | 46 PyInstaller | 完成 | `PhoneRemote.exe` 已构建并通过 `--smoke-test` |
 | 47–48 Inno Setup / Firewall lifecycle | 源码完成 | `PhoneRemoteSetup.exe` 编译成功；安装/卸载会管理自有规则和启动项 |
 | 49 Installer migration/upgrade tests | 部分完成 | 迁移和命令生成自动测试完成；Fresh/Upgrade/Uninstall VM 矩阵待执行 |
 | 50 Server CI | 源码完成 | Windows + Python 3.12 + Ruff + pytest + PyInstaller smoke workflow；首次 GitHub run 待 push 后验证 |
-| 51–52 Mobile CI / iOS compile | 后续设备 | 本机明确未执行 |
+| 51 Mobile CI | 源码完成 | 固定 Flutter 3.24.5/JDK 17，Android analyze/test/debug APK/unsigned AAB；`protocol/**` 同时触发 |
+| 52 iOS no-sign compile | 源码完成 | macOS 15 no-sign workflow 已加入；首次托管 Xcode 运行待 push 后验证 |
 | 53 Documentation | 完成（当前真实状态） | 架构、协议、安全、开发、安装、发布、审核准备、隐私和 Release Gate 文档 |
-| 54 Full regression | 完成（Python 范围） | Ruff、51 tests、源码 HTTPS、Windows Schannel、EXE smoke、Inno compile 均通过 |
+| 54 Full regression | 完成（本机可执行范围） | Ruff、52 Python tests、31 Flutter tests、真实跨栈 HTTPS、Android APK/AAB、EXE smoke、Inno compile 均通过 |
 | 55 Windows RC installer | 部分完成 | 未签名安装器产物已生成；真实安装矩阵和代码签名仍是 Release Gate |
-| 56–57 Android/iOS readiness | 后续设备 | 本机明确未执行 |
+| 56 Android readiness | 部分完成 | Debug APK、unsigned Release APK/AAB 均构建成功；签名、物理机矩阵和商店 RC 待执行 |
+| 57 iOS readiness | 源码完成 | Bundle ID、本地网络/Bonjour 权限、Keychain-backed storage、Wake 降级和 no-sign CI 已配置；macOS 首次编译待验证 |
 | 58 Release Gate report | 完成 | 见 `docs/RELEASE_GATE.md` |
 
 本轮自动验证结果：
@@ -45,14 +52,21 @@
 ```text
 Python 3.12.10
 Ruff format/check: pass
-pytest: 51 passed
+pytest: 52 passed
 HTTPS source runtime: pass (Python TLS + Windows Schannel)
 PyInstaller: PhoneRemote.exe build + smoke pass
 Inno Setup 6.7.3: PhoneRemoteSetup.exe compile pass
+Flutter 3.24.5 / Dart 3.5.4 / JDK 17 / Android API 36
+flutter analyze: pass
+flutter test: 31 passed (live integration normally skipped)
+Flutter ↔ real Python HTTPS pairing/reconnect integration: pass
+Android debug APK: pass
+Android unsigned release APK/AAB: pass
 ```
 
-未执行且不得误标为完成：Flutter 全部步骤、真实 Installer 的系统变更/升级/卸载 VM 矩阵、
-代码签名、GitHub 托管 CI 首次运行、商店账号/Signing/Entitlement/Production 发布。
+未执行且不得误标为完成：真实手机多设备 LAN/控制/WoL 验收、iOS Xcode 本机编译、真实
+Installer 系统变更/升级/卸载 VM 矩阵、代码签名、GitHub 托管 CI 首次运行、商店账号、
+Signing、受限 Entitlement 和 Production 发布。
 
 ---
 
@@ -2559,48 +2573,48 @@ docs/STORE_RELEASE.md
 
 ## Android
 
-- [ ] Discovery
-- [ ] Manual device
-- [ ] Multi-PC
-- [ ] Pairing
-- [ ] Long-lived paired state
-- [ ] Secure Credential storage
-- [ ] Identity validation
-- [ ] Remote with Touchpad as default mode
-- [ ] Touchpad
-- [ ] Optional D-pad mode
-- [ ] Keyboard quick access from Remote
-- [ ] Media
-- [ ] Apps
-- [ ] Unavailable App handling
-- [ ] Power
-- [ ] WoL
-- [ ] Auto Wake
-- [ ] Demo Mode
-- [ ] flutter analyze
-- [ ] flutter test
-- [ ] release-compatible build
-- [ ] AAB-ready structure
+- [x] Discovery（源码/Mock，待真实多设备 LAN 验收）
+- [x] Manual device（HTTPS-only 输入校验）
+- [x] Multi-PC
+- [x] Pairing（真实 Python HTTPS 联调通过）
+- [x] Long-lived paired state（Bearer reconnect 联调通过）
+- [x] Secure Credential storage（Android Keystore-backed plugin，待物理机验收）
+- [x] Identity validation（原始 SPKI DER 钉扎联调通过）
+- [x] Remote with Touchpad as default mode
+- [x] Touchpad（源码/节流测试，待物理机 UX）
+- [x] Optional D-pad mode
+- [x] Keyboard quick access from Remote
+- [x] Media
+- [x] Apps
+- [x] Unavailable App handling
+- [x] Power（二次确认；自动测试不执行真实电源操作）
+- [x] WoL（Magic Packet/广播目标测试，待物理 LAN）
+- [x] Auto Wake（重试状态机测试）
+- [x] Demo Mode
+- [x] flutter analyze
+- [x] flutter test
+- [x] release-compatible build（unsigned Release APK 构建通过）
+- [x] AAB-ready structure（unsigned Release AAB 构建通过）
 
 ## iOS
 
-- [ ] Discovery
-- [ ] Manual device
-- [ ] Multi-PC
-- [ ] Pairing
-- [ ] Long-lived paired state
-- [ ] Keychain-backed Credential
-- [ ] Identity validation
-- [ ] Remote with Touchpad as default mode
-- [ ] Touchpad
-- [ ] Optional D-pad mode
-- [ ] Keyboard quick access from Remote
-- [ ] Media
-- [ ] Apps
-- [ ] Power
-- [ ] Wake abstraction
-- [ ] Graceful entitlement limitation
-- [ ] Demo Mode
+- [x] Discovery（源码/权限配置，待真实设备）
+- [x] Manual device
+- [x] Multi-PC
+- [x] Pairing（共享 Dart 核心）
+- [x] Long-lived paired state（共享 Dart 核心）
+- [x] Keychain-backed Credential（plugin 配置，待真实设备）
+- [x] Identity validation
+- [x] Remote with Touchpad as default mode
+- [x] Touchpad（源码，待真实设备 UX）
+- [x] Optional D-pad mode
+- [x] Keyboard quick access from Remote
+- [x] Media
+- [x] Apps
+- [x] Power
+- [x] Wake abstraction
+- [x] Graceful entitlement limitation
+- [x] Demo Mode
 - [ ] iOS project build feasibility
 
 ## Security
@@ -2636,11 +2650,11 @@ docs/STORE_RELEASE.md
 ## CI
 
 - [x] Server CI（workflow 已实现，首次托管运行待验证）
-- [ ] Mobile CI
-- [ ] `protocol/**` triggers both
+- [x] Mobile CI（workflow 已实现，首次托管运行待验证）
+- [x] `protocol/**` triggers both
 - [x] PyInstaller smoke build
-- [ ] Android build check
-- [ ] iOS compile check when feasible
+- [x] Android build check
+- [ ] iOS compile check when feasible（no-sign job 已定义，待首次托管运行）
 
 ## Documentation
 

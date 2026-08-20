@@ -218,6 +218,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                     "version": __version__,
                     "apiVersion": API_VERSION,
                     "addresses": local_ipv4_addresses(),
+                    "wakeTargets": context.network.wake_targets(),
                     "port": context.port,
                     "configOk": config_error is None,
                     "configError": config_error,

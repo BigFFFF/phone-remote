@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -8,6 +9,7 @@ from phone_remote.discovery import DiscoveryPublisher
 from phone_remote.network import (
     API_FIREWALL_RULE,
     DISCOVERY_FIREWALL_RULE,
+    NetworkDiagnostics,
     firewall_install_commands,
     firewall_remove_command,
     set_start_with_windows,
@@ -73,6 +75,37 @@ def test_startup_registration_preserves_executable_and_arguments(monkeypatch) ->
     set_start_with_windows([r"C:\Program Files\Python 3.12\python.exe", "-m", "phone_remote"], True)
     assert recorded["name"] == "Phone Remote"
     assert recorded["value"] == '"C:\\Program Files\\Python 3.12\\python.exe" -m phone_remote'
+
+
+def test_wake_targets_normalize_mac_and_compute_directed_broadcast(monkeypatch) -> None:
+    import phone_remote.network as network
+
+    calls = []
+    monkeypatch.setattr(network.sys, "platform", "win32")
+    monkeypatch.setattr(
+        network.subprocess,
+        "run",
+        lambda *args, **kwargs: (
+            calls.append((args, kwargs))
+            or SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    '[{"mac":"00-11-22-33-44-55","address":"192.168.10.20","prefixLength":24}]'
+                ),
+            )
+        ),
+    )
+    diagnostics = NetworkDiagnostics()
+
+    assert diagnostics.wake_targets() == [
+        {
+            "mac": "00:11:22:33:44:55",
+            "address": "192.168.10.20",
+            "broadcast": "192.168.10.255",
+        }
+    ]
+    assert diagnostics.wake_targets() == diagnostics.wake_targets()
+    assert len(calls) == 1
 
 
 def test_discovery_failure_never_blocks_manual_connection(monkeypatch) -> None:

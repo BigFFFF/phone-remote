@@ -14,6 +14,10 @@ A client supporting API v1 may connect to any server product version that report
 
 ## Pairing
 
+The public `/info` field `pairing` reports whether a session is already active. `false` is the
+normal idle state and does not mean pairing is unavailable; a client starts the flow by posting to
+`/pair/request`.
+
 1. Client calls `POST /api/v1/pair/request`.
 2. Companion creates one cryptographically random six-digit code and displays it on Windows.
 3. Client submits the session ID, code, device name, and platform to `/pair/complete`.
@@ -28,6 +32,11 @@ limits. Starting another session invalidates the prior session.
 Authenticated routes use `Authorization: Bearer <credential>`. Each Credential belongs to one
 client. Removing one client does not affect others. There is no fixed 30/90/365-day expiration;
 the relationship remains valid until explicit revocation, lost state, or identity failure.
+
+Authenticated `/status` also returns active physical-adapter Wake targets (`mac`, `address`, and
+directed `broadcast`). Mobile stores the matching target with the trusted PC, prefers the directed
+broadcast, and may use `255.255.255.255` as a fallback. This information is never exposed by the
+public `/info` route.
 
 Certificate renewal reuses the Server Identity key, so the identity fingerprint remains stable.
 A client must block an unexpected fingerprint or Server ID change and require intentional

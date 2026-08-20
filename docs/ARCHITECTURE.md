@@ -9,7 +9,7 @@ or remote-desktop assumptions.
 ## Repository components
 
 ```text
-Web or future Flutter client
+Flutter Android/iOS client or Web fallback
           │ HTTPS API v1 + Bearer Credential
           ▼
 phone_remote.api
@@ -21,6 +21,13 @@ phone_remote.api
 
 Windows tray → loopback management API → clients/catalog/network/WoL diagnostics
 ```
+
+The Flutter client separates UI from `DeviceRepository`, `DiscoveryService`, `ApiClient`,
+`PairingService`, `RemoteSession`, `WakeService`, and secure/metadata storage. Device metadata stores
+only a credential reference; Android Keystore/iOS Keychain-backed storage owns the credential.
+`RealDeviceRepository` handles saved PCs while `DemoDeviceRepository` provides an explicit offline
+review mode. Pointer moves are coalesced at a 33 ms cadence so stale raw events cannot create an
+unbounded HTTP queue.
 
 `protocol/openapi.yaml` is the Server/Mobile boundary. Product versions do not need to match;
 API compatibility is tracked by `apiVersion=1`.

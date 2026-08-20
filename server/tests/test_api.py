@@ -58,6 +58,15 @@ class FakeNetwork:
     def firewall_status(self):
         return {"api": True, "discovery": True}
 
+    def wake_targets(self):
+        return [
+            {
+                "mac": "00:11:22:33:44:55",
+                "address": "192.168.1.20",
+                "broadcast": "192.168.1.255",
+            }
+        ]
+
 
 class RunningApi:
     def __init__(self, server, thread, context, backend):
@@ -197,7 +206,9 @@ def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) 
     assert api.request("GET", "/api/v1/status")[0] == 401
     paired = api.pair()
     credential = paired["credential"]
-    assert api.request("GET", "/api/v1/status", credential=credential)[0] == 200
+    status, server_status, _ = api.request("GET", "/api/v1/status", credential=credential)
+    assert status == 200
+    assert server_status["wakeTargets"][0]["mac"] == "00:11:22:33:44:55"
     status, _, _ = api.request("POST", "/api/v1/action", {"action": "up"}, credential=credential)
     assert status == 200
     assert api.backend.events[-1][0] == "key"

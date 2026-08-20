@@ -9,12 +9,17 @@ not designed for public-internet exposure.
 ## Controls
 
 - Production API is HTTPS with a locally generated ECDSA P-256 identity and certificate.
+- The Flutter client hashes the exact DER SubjectPublicKeyInfo from the peer certificate, compares
+  it with the advertised stable Server Identity, and pins it for every trusted reconnect. A changed
+  identity blocks control instead of falling back to broad self-signed certificate trust.
 - Pairing codes use the operating-system CSPRNG, expire in five minutes, are one-time, and are
   never returned to a LAN requester or written to logs.
 - Client secrets contain at least 256 bits of entropy. Only a salted scrypt verifier is stored;
   verification uses constant-time comparison.
 - Credentials are independent and independently revocable. Revoke All invalidates every active
   client without rebuilding the Server Identity.
+- Mobile device metadata stores only a credential reference. The plaintext Credential is delegated
+  to Android Keystore/iOS Keychain-backed secure storage and is never written to shared preferences.
 - Non-public routes return 401 for missing, invalid, or revoked Credentials.
 - The body limit is 16 KiB; malformed JSON, invalid values, NaN/Infinity, oversized text,
   traversal, unknown actions, and unknown apps are rejected.
