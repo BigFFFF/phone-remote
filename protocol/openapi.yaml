@@ -1,0 +1,298 @@
+openapi: 3.1.0
+info:
+  title: Phone Remote LAN API
+  version: 1.0.0
+  description: Secure LAN-only protocol between a Phone Remote client and Windows Companion.
+servers:
+  - url: https://{host}:8765/api/v1
+    variables:
+      host:
+        default: 127.0.0.1
+security:
+  - bearerCredential: []
+paths:
+  /info:
+    get:
+      operationId: getServerInfo
+      security: []
+      responses:
+        "200":
+          description: Public server identity and compatibility information.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerInfo" }
+  /pair/request:
+    post:
+      operationId: requestPairing
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "201":
+          description: Pairing session created; the code is displayed only by Windows Companion.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PairingSession" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /pair/complete:
+    post:
+      operationId: completePairing
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PairingCompletion" }
+      responses:
+        "201":
+          description: An independent, long-lived client credential. It is returned only once.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PairingResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /status:
+    get:
+      operationId: getStatus
+      responses:
+        "200":
+          description: Authenticated server status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /apps:
+    get:
+      operationId: getApps
+      responses:
+        "200":
+          description: Configured and enabled application catalog only.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, apps]
+                properties:
+                  ok: { const: true }
+                  apps:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConfiguredApp" }
+                  warning: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /apps/{appId}/launch:
+    post:
+      operationId: launchConfiguredApp
+      parameters:
+        - name: appId
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,31}$" }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200": { $ref: "#/components/responses/ActionAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /action:
+    post:
+      operationId: performAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/ActionAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /mouse:
+    post:
+      operationId: performMouseEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/ActionAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /text:
+    post:
+      operationId: sendText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000 }
+      responses:
+        "200": { $ref: "#/components/responses/ActionAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+  /power:
+    post:
+      operationId: performPowerAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { enum: [sleep, hibernate, restart, shutdown] }
+      responses:
+        "200": { $ref: "#/components/responses/ActionAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  securitySchemes:
+    bearerCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: PhoneRemoteCredentialV1
+  schemas:
+    ServerInfo:
+      type: object
+      required: [ok, serverId, name, version, apiVersion, pairing, identityFingerprint, certificateFingerprint]
+      properties:
+        ok: { const: true }
+        serverId: { type: string }
+        name: { type: string }
+        version: { type: string }
+        apiVersion: { const: 1 }
+        pairing: { type: boolean }
+        identityFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+        certificateFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+    PairingSession:
+      type: object
+      required: [ok, sessionId, expiresIn]
+      properties:
+        ok: { const: true }
+        sessionId: { type: string, format: uuid }
+        expiresIn: { type: integer, minimum: 1, maximum: 300 }
+    PairingCompletion:
+      type: object
+      additionalProperties: false
+      required: [sessionId, code, deviceName, platform]
+      properties:
+        sessionId: { type: string, format: uuid }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+        deviceName: { type: string, minLength: 1, maxLength: 120 }
+        platform: { type: string, minLength: 1, maxLength: 40 }
+    PairingResult:
+      type: object
+      required: [ok, clientId, credential, serverId, identityFingerprint]
+      properties:
+        ok: { const: true }
+        clientId: { type: string, format: uuid }
+        credential: { type: string, writeOnly: true }
+        serverId: { type: string }
+        identityFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+    ServerStatus:
+      type: object
+      required: [ok, serverId, name, version, apiVersion, addresses, port, configOk]
+      properties:
+        ok: { const: true }
+        serverId: { type: string }
+        name: { type: string }
+        version: { type: string }
+        apiVersion: { const: 1 }
+        addresses: { type: array, items: { type: string, format: ipv4 } }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        configOk: { type: boolean }
+        configError: { type: [string, "null"] }
+    ConfiguredApp:
+      type: object
+      required: [id, name, available, icon]
+      properties:
+        id: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,31}$" }
+        name: { type: string, maxLength: 80 }
+        available: { type: boolean }
+        icon: { type: string }
+    ActionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [up, down, left, right, enter, tab, back, escape, space, f11, desktop, close_active, volume_up, volume_down, volume_mute, media_play_pause, media_next, media_previous]
+    MouseRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, dx, dy]
+          properties:
+            type: { const: move }
+            dx: { type: number }
+            dy: { type: number }
+        - type: object
+          additionalProperties: false
+          required: [type]
+          properties:
+            type: { const: click }
+            button: { enum: [left, right], default: left }
+        - type: object
+          additionalProperties: false
+          required: [type]
+          properties:
+            type: { const: double }
+        - type: object
+          additionalProperties: false
+          required: [type, delta]
+          properties:
+            type: { const: wheel }
+            delta: { type: number }
+    Success:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { const: true }
+        message: { type: string }
+    Error:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { const: false }
+        error: { type: string }
+  responses:
+    ActionAccepted:
+      description: The validated action was accepted and executed in receive order.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Success" }
+    BadRequest:
+      description: Invalid or unsupported request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, invalid, or revoked credential.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Pairing request or attempt limit reached.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Request exceeds the 16 KiB body limit.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+

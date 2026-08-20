@@ -1,94 +1,79 @@
 # Phone Remote
 
-Phone Remote 是一个仅在局域网内运行的 Windows 手机网页遥控器，可用手机控制方向键、媒体播放、音量、鼠标和键盘输入，并从配置文件启动常用音视频应用。
+**Phone Remote — Cross-platform remote control for Windows PCs**
 
-## 功能
+Phone Remote 是一个面向用户自有 Windows PC 的可信局域网遥控系统。当前仓库包含
+Windows/Python Companion、HTTPS API、Windows 管理界面和 Web Fallback Client；原生
+Flutter Android/iOS Client 将在具备 Flutter 工具链的其他设备继续开发。
 
-- 遥控：方向键、确认、返回、桌面、关闭窗口、全屏和媒体控制
-- 触控：移动指针、单击、双击、右键和双指滚动
-- 键盘：向当前 Windows 焦点控件发送中英文文本
-- 应用：从外部 JSON 配置动态加载应用和图标
-- 电源：睡眠、重启和关机，带二次确认
-- 配置热加载：修改后无需重启服务，手机端最多约 5 秒刷新
+## 当前功能
 
-## 目录
+- 长期 Server Identity、自签名 TLS 证书和异常 Identity 变化保护
+- 6 位一次性安全配对码、5 分钟有效期、尝试次数及请求速率限制
+- 每台客户端独立 256-bit Credential、哈希存储、独立撤销和 Revoke All
+- API v1、D-pad、Touchpad、Unicode Keyboard、Media 和 Power Control
+- 仅允许按配置 ID 启动应用，不接受远程 EXE、URL、Shell 或命令行
+- Start Menu、Registry、App Paths、MSIX 应用发现，用户批准后才进入 Catalog
+- mDNS/DNS-SD `_phone-remote._tcp.local.` 局域网发现
+- 托盘入口、仅本机管理页、配对设备和应用 Catalog 管理
+- Web Fallback Client 的 Pairing、Authentication 和 Server Identity 检查
+- Rotating Log、Private/LocalSubnet 防火墙规则、Public Network 运行时阻断
+- PyInstaller、Inno Setup 安装器工程和 Windows GitHub Actions CI
+
+## 仓库结构
 
 ```text
-PhoneRemote.exe       Windows 部署程序，本地生成，不提交到 Git
-config.json           当前电脑的运行配置，不提交到 Git
-config.example.json   可提交的配置模板
-icons/                应用图标
-src/                  Python 服务、网页界面和通用图标
+server/                 Python 3.12 Windows Companion、测试和 Web Client
+protocol/openapi.yaml   API v1 正式协议边界
+packaging/windows/      PyInstaller 与 Inno Setup 工程
+docs/                   架构、安全、开发、安装、隐私和发布文档
+.github/workflows/      Server CI
+config.example.json     version=1 配置兼容性样例
 ```
+
+`mobile/` 尚未在此设备创建；这项状态有意保留，以免把未执行的 Flutter 工作标成完成。
 
 ## 从源码运行
 
-1. 将 `config.example.json` 复制为 `config.json`，按本机安装位置修改应用路径。
-2. 在项目根目录运行：
+要求 Windows 11 和 Python 3.12.x：
 
 ```powershell
-py .\src\server.py
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".\server[dev]"
+.\.venv\Scripts\python.exe -m phone_remote
 ```
 
-3. 手机与电脑连接同一局域网，在手机浏览器打开 `http://<电脑局域网IP>:8765`。
+首次启动会在 `%LOCALAPPDATA%\PhoneRemote` 创建配置、长期身份、TLS 证书、客户端状态
+和日志。源代码运行不会修改防火墙；安装器才负责最小权限规则。
 
-服务只依赖 Python 标准库。Windows 防火墙需要允许 TCP 端口 `8765` 的专用网络入站连接。
+托盘菜单可打开管理页和 Web Remote。首次使用 Web Remote 时请求配对码，然后在
+Windows Companion 通知中读取并输入。HTTPS 使用本机生成的证书，浏览器首次打开可能
+要求用户确认本地证书。
 
-## 构建单文件程序
-
-安装 PyInstaller：
+无托盘开发模式：
 
 ```powershell
-py -m pip install pyinstaller
+.\.venv\Scripts\python.exe -m phone_remote --no-tray --print-pair-code
 ```
 
-在 `src` 目录执行：
+## 验证与构建
 
 ```powershell
-py -m PyInstaller --noconfirm --clean --onefile --windowed --name PhoneRemote --add-data "index.html;." --add-data "assets;assets" server.py
+Set-Location server
+..\.venv\Scripts\ruff.exe format --check .
+..\.venv\Scripts\ruff.exe check .
+..\.venv\Scripts\python.exe -m pytest
+Set-Location ..
+.\packaging\windows\build.ps1
+.\packaging\windows\build.ps1 -Installer
 ```
 
-生成的 `src\dist\PhoneRemote.exe` 可放到项目根目录。`config.json` 和 `icons` 保持外置，因此增加应用或替换图标不需要重新构建。
+完整开发、协议、安全和安装说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、
+[docs/PROTOCOL.md](docs/PROTOCOL.md)、[docs/SECURITY.md](docs/SECURITY.md) 和
+[docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)。
 
-## 配置应用
+## 安全边界
 
-`config.json` 顶层包含 `browsers` 和 `apps`。应用顺序就是手机端显示顺序，`enabled: false` 会隐藏应用。
-
-浏览器启动示例：
-
-```json
-{
-  "id": "example_web",
-  "name": "示例网站",
-  "enabled": true,
-  "icon": "example.png",
-  "launch": {
-    "type": "browser",
-    "browser": "edge",
-    "url": "https://example.com",
-    "fullscreen": true
-  }
-}
-```
-
-程序启动示例：
-
-```json
-{
-  "id": "example_app",
-  "name": "示例程序",
-  "enabled": true,
-  "icon": "example.png",
-  "launch": {
-    "type": "program",
-    "path": "C:\\Program Files\\Example\\example.exe",
-    "args": []
-  }
-}
-```
-
-应用 ID 仅支持小写英文字母、数字、下划线和连字符。图标必须是 `icons` 目录内的文件名；网页地址仅支持 HTTP/HTTPS，不支持任意 Shell 命令。
-
-## 安全说明
-
-本服务没有账号认证，设计用途是受信任的家庭局域网。不要把端口 `8765` 映射到公网，也不要在公共网络配置文件中放行该端口。
+本产品仅用于可信 Private LAN。不要做路由器端口映射、不要开放 Public Profile，也不要
+把 Credential、`state.json`、Identity Key 或 TLS Key 提交到 Git。服务不采集键盘内容，
+不上传遥控历史，不包含云账号、广告、Analytics 或第三方遥测。

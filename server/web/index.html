@@ -264,6 +264,10 @@
     .dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
     #powerMenu .dialog-actions { grid-template-columns: 1fr; }
     .dialog-actions button { min-height: 52px; }
+    .pair-form { display: grid; gap: 10px; min-width: min(82vw, 360px); }
+    .pair-form input { min-height: 48px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; background: var(--panel); color: var(--text); font: inherit; }
+    .pair-code { text-align: center; letter-spacing: 7px; font: 700 26px ui-monospace, monospace !important; }
+    .pair-help { color: var(--muted); margin: 0; line-height: 1.45; }
     .hidden { display: none !important; }
     .toast {
       position: fixed;
@@ -302,7 +306,7 @@
   <main class="shell">
     <header>
       <div class="brand">
-        <h1>客厅遥控</h1>
+        <h1>Phone Remote</h1>
         <div class="connection"><span id="dot" class="dot"></span><span id="status">正在连接</span></div>
       </div>
       <button id="powerButton" class="header-button" aria-label="电源菜单" title="电源菜单">
@@ -373,6 +377,19 @@
     </nav>
   </main>
 
+  <dialog id="pairDialog">
+    <div class="pair-form">
+      <h2>安全配对</h2>
+      <p id="pairHelp" class="pair-help">首次连接需要由 Windows Companion 显示一次性验证码。</p>
+      <input id="deviceName" maxlength="120" autocomplete="name" placeholder="此设备名称">
+      <button id="requestPair" class="primary">请求验证码</button>
+      <div id="completePairPane" class="pair-form hidden">
+        <input id="pairCode" class="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+        <button id="completePair" class="primary">完成配对</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="powerDialog">
     <div id="powerMenu">
       <h2>电源</h2>
@@ -409,6 +426,15 @@
     const appGrid = document.getElementById('appGrid');
     const keyboardInput = document.getElementById('keyboardInput');
     const sendTextButton = document.getElementById('sendTextButton');
+    const pairDialog = document.getElementById('pairDialog');
+    const pairHelp = document.getElementById('pairHelp');
+    const pairCode = document.getElementById('pairCode');
+    const deviceName = document.getElementById('deviceName');
+    const completePairPane = document.getElementById('completePairPane');
+    let credential = localStorage.getItem('phone-remote-credential') || '';
+    let pairedServerId = localStorage.getItem('phone-remote-server-id') || '';
+    let identityFingerprint = localStorage.getItem('phone-remote-identity') || '';
+    let pairingSessionId = '';
     let pendingAction = null;
     let toastTimer = 0;
     let wakeLock = null;
@@ -428,16 +454,76 @@
       dot.classList.toggle('connected', connected);
       statusText.textContent = connected ? '已连接' : '连接断开';
     }
+    function showPairing(message = '首次连接需要由 Windows Companion 显示一次性验证码。') {
+      pairHelp.textContent = message;
+      completePairPane.classList.add('hidden');
+      pairingSessionId = '';
+      if (!pairDialog.open) pairDialog.showModal();
+    }
+    async function apiFetch(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (credential) headers.Authorization = `Bearer ${credential}`;
+      const response = await fetch(path, { ...options, headers });
+      if (response.status === 401 && !path.includes('/pair/')) {
+        credential = '';
+        localStorage.removeItem('phone-remote-credential');
+        showPairing('配对凭据已失效，请重新配对。');
+      }
+      return response;
+    }
+    async function requestPairing() {
+      try {
+        const response = await fetch('/api/v1/pair/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || '无法请求配对');
+        pairingSessionId = data.sessionId;
+        pairHelp.textContent = `请在 ${data.expiresIn} 秒内输入 Windows Companion 显示的 6 位验证码。`;
+        completePairPane.classList.remove('hidden');
+        pairCode.focus();
+      } catch (error) { showToast(error.message || '配对请求失败', 2200); }
+    }
+    async function completePairing() {
+      try {
+        const response = await fetch('/api/v1/pair/complete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: pairingSessionId, code: pairCode.value, deviceName: deviceName.value || navigator.userAgent.slice(0, 80), platform: 'web' })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || '配对失败');
+        credential = data.credential; pairedServerId = data.serverId; identityFingerprint = data.identityFingerprint;
+        localStorage.setItem('phone-remote-credential', credential);
+        localStorage.setItem('phone-remote-server-id', pairedServerId);
+        localStorage.setItem('phone-remote-identity', identityFingerprint);
+        pairCode.value = ''; pairDialog.close(); showToast('配对成功'); refresh(); refreshApps();
+      } catch (error) { showToast(error.message || '配对失败', 2200); }
+    }
+    async function verifyServerIdentity() {
+      try {
+        const response = await fetch('/api/v1/info', { cache: 'no-store' });
+        const data = await response.json();
+        if (pairedServerId && (data.serverId !== pairedServerId || data.identityFingerprint !== identityFingerprint)) {
+          credential = '';
+          localStorage.removeItem('phone-remote-credential');
+          showPairing('检测到 Server Identity 变化，已阻止连接。请确认后重新配对。');
+          return false;
+        }
+        if (!credential) { showPairing(); return false; }
+        return true;
+      } catch { setConnection(false); return false; }
+    }
     async function send(action, button = null) {
       const appName = button?.dataset.appName;
       const givesFeedback = action === 'desktop' || action === 'close_active' || action.startsWith('app:');
       if (button && givesFeedback) button.classList.add('busy');
       if (appName) showToast(`正在打开${appName}`);
       try {
-        const response = await fetch('/api/action', {
+        const isPower = ['sleep', 'hibernate', 'restart', 'shutdown'].includes(action);
+        const appId = action.startsWith('app:') ? action.slice(4) : '';
+        const endpoint = appId ? `/api/v1/apps/${encodeURIComponent(appId)}/launch` : (isPower ? '/api/v1/power' : '/api/v1/action');
+        const response = await apiFetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action })
+          body: JSON.stringify(appId ? {} : { action })
         });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || '操作失败');
@@ -454,7 +540,7 @@
     }
     async function sendMouse(payload) {
       try {
-        const response = await fetch('/api/mouse', {
+        const response = await apiFetch('/api/v1/mouse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -473,7 +559,7 @@
       }
       sendTextButton.classList.add('busy');
       try {
-        const response = await fetch('/api/text', {
+        const response = await apiFetch('/api/v1/text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: value })
@@ -493,7 +579,7 @@
     }
     async function refresh() {
       try {
-        const response = await fetch('/api/status', { cache: 'no-store' });
+        const response = await apiFetch('/api/v1/status', { cache: 'no-store' });
         const data = await response.json();
         setConnection(Boolean(data.ok));
       } catch {
@@ -535,7 +621,7 @@
     }
     async function refreshApps() {
       try {
-        const response = await fetch('/api/apps', { cache: 'no-store' });
+        const response = await apiFetch('/api/v1/apps', { cache: 'no-store' });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || '应用配置不可用');
         const signature = JSON.stringify(data.apps);
@@ -570,6 +656,8 @@
       if (!powerDialog.open) powerDialog.showModal();
     }
     document.getElementById('powerButton').addEventListener('click', showPowerMenu);
+    document.getElementById('requestPair').addEventListener('click', requestPairing);
+    document.getElementById('completePair').addEventListener('click', completePairing);
     document.getElementById('closePower').addEventListener('click', () => powerDialog.close());
     document.getElementById('backToPower').addEventListener('click', showPowerMenu);
     document.addEventListener('pointerdown', (event) => {
@@ -736,8 +824,7 @@
     });
     const savedView = localStorage.getItem('settop-view');
     switchView(['remote', 'touch', 'apps', 'keyboard'].includes(savedView) ? savedView : 'remote');
-    refresh();
-    refreshApps();
+    verifyServerIdentity().then(valid => { if (valid) { refresh(); refreshApps(); } });
     keepAwake();
     setInterval(refresh, 4000);
     setInterval(refreshApps, 5000);

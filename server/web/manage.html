@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Phone Remote 管理</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #11181d; color: #edf3f5; }
+    body { max-width: 980px; margin: auto; padding: 24px; }
+    h1, h2 { margin: 0 0 12px; }
+    section { background: #1b252c; border: 1px solid #34444e; border-radius: 12px; padding: 18px; margin: 16px 0; }
+    button, input, select { font: inherit; padding: 9px 12px; border-radius: 7px; border: 1px solid #49616d; }
+    button { background: #27717a; color: white; cursor: pointer; }
+    button.danger { background: #8f3431; }
+    input, select { color: inherit; background: #11181d; min-width: 180px; }
+    form, .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .item { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #34444e; }
+    .muted { color: #a9bac3; font-size: 14px; }
+    #pairCode { font: 700 36px ui-monospace, monospace; letter-spacing: 7px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>Phone Remote 管理</h1>
+  <p id="message" class="muted">正在连接本机 Companion…</p>
+  <section><h2>状态</h2><pre id="overview"></pre></section>
+  <section>
+    <h2>配对</h2>
+    <p class="muted">先在手机或 Web Remote 请求配对，再在这里查看当前一次性验证码。</p>
+    <button id="newPair">查看当前配对码</button>
+    <p id="pairCode"></p><p id="pairExpiry" class="muted"></p>
+  </section>
+  <section>
+    <div class="row"><h2>已配对设备</h2><button id="revokeAll" class="danger">撤销全部</button></div>
+    <div id="clients"></div>
+  </section>
+  <section>
+    <div class="row"><h2>应用</h2><button id="rescan">扫描已安装应用</button></div>
+    <div id="apps"></div>
+    <h3>扫描结果</h3><div id="candidates"></div>
+    <h3>手动添加程序</h3>
+    <form id="programForm"><input name="name" placeholder="名称" required><input name="path" placeholder="C:\\…\\app.exe" required><button>添加</button></form>
+    <h3>手动添加网站</h3>
+    <form id="websiteForm"><input name="name" placeholder="名称" required><input name="url" type="url" placeholder="https://…" required><input name="browser" value="edge" required><button>添加</button></form>
+  </section>
+  <script>
+    const token = location.hash.slice(1);
+    const message = document.getElementById('message');
+    async function api(path, options = {}) {
+      const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Phone-Remote-Admin': token, ...(options.headers || {}) } });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || '请求失败');
+      return data;
+    }
+    function item(title, detail, actions = []) {
+      const row = document.createElement('div'); row.className = 'item';
+      const text = document.createElement('div');
+      const strong = document.createElement('strong'); strong.textContent = title;
+      const small = document.createElement('div'); small.className = 'muted'; small.textContent = detail || '';
+      text.append(strong, small); const controls = document.createElement('div'); actions.forEach(action => controls.append(action));
+      row.append(text, controls); return row;
+    }
+    function button(label, handler, danger = false) {
+      const value = document.createElement('button'); value.textContent = label; if (danger) value.className = 'danger'; value.onclick = handler; return value;
+    }
+    async function refresh() {
+      try {
+        const data = await api('/api/v1/admin/overview');
+        message.textContent = '仅本机可访问 · 管理凭据不会发送到局域网客户端';
+        const { server, networkProfiles, firewall, startWithWindows, wol } = data;
+        document.getElementById('overview').textContent = `${server.name} · ${server.version}\n${server.addresses.join(', ') || '无局域网地址'}:${server.port}\n网络：${networkProfiles.map(x => `${x.name} (${x.category})`).join(', ') || '未知'}\n防火墙：API=${firewall.api} Discovery=${firewall.discovery}\n开机启动：${startWithWindows}\nIdentity: ${server.identityFingerprint}\nWoL adapters: ${wol.length}`;
+        renderClients(data.clients); renderApps(data.apps);
+      } catch (error) { message.textContent = error.message; }
+    }
+    function renderClients(clients) {
+      const root = document.getElementById('clients'); root.replaceChildren();
+      clients.forEach(client => root.append(item(client.device_name, `${client.platform} · Last seen ${client.last_seen}`, [button('移除', async () => { await api(`/api/v1/admin/clients/${encodeURIComponent(client.client_id)}`, { method: 'DELETE' }); refresh(); }, true)])));
+      if (!clients.length) root.textContent = '暂无已配对设备';
+    }
+    function renderApps(apps) {
+      const root = document.getElementById('apps'); root.replaceChildren();
+      apps.forEach(app => root.append(item(app.name, `${app.id} · ${app.available === false ? 'Missing' : 'Available'}`, [button(app.enabled ? '停用' : '启用', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'POST', body: JSON.stringify({ enabled: !app.enabled }) }); refresh(); }), button('删除', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'DELETE' }); refresh(); }, true)])));
+    }
+    document.getElementById('newPair').onclick = async () => { try { const data = await api('/api/v1/admin/pair'); document.getElementById('pairCode').textContent = data.code; document.getElementById('pairExpiry').textContent = `${data.expiresIn} 秒内有效，一次性使用`; } catch (error) { document.getElementById('pairCode').textContent = ''; document.getElementById('pairExpiry').textContent = error.message; } };
+    document.getElementById('revokeAll').onclick = async () => { if (confirm('撤销所有设备？')) { await api('/api/v1/admin/clients/revoke-all', { method: 'POST', body: '{}' }); refresh(); } };
+    document.getElementById('rescan').onclick = async () => { const data = await api('/api/v1/admin/apps/rescan', { method: 'POST', body: '{}' }); const root = document.getElementById('candidates'); root.replaceChildren(); data.candidates.forEach(app => root.append(item(app.name, `${app.source} · ${app.category}${app.configured ? ' · 已配置' : ''}`, app.configured ? [] : [button('批准', async () => { await api('/api/v1/admin/apps/approve', { method: 'POST', body: JSON.stringify({ discoveryId: app.discoveryId }) }); document.getElementById('rescan').click(); refresh(); })]))); };
+    document.getElementById('programForm').onsubmit = async event => { event.preventDefault(); const value = Object.fromEntries(new FormData(event.target)); await api('/api/v1/admin/apps/manual-program', { method: 'POST', body: JSON.stringify(value) }); event.target.reset(); refresh(); };
+    document.getElementById('websiteForm').onsubmit = async event => { event.preventDefault(); const value = Object.fromEntries(new FormData(event.target)); await api('/api/v1/admin/apps/manual-website', { method: 'POST', body: JSON.stringify(value) }); event.target.reset(); refresh(); };
+    if (!token) message.textContent = '缺少本机管理凭据，请从 Phone Remote 托盘打开。'; else refresh();
+  </script>
+</body>
+</html>

@@ -7,6 +7,15 @@ __pycache__/
 build/
 dist/
 *.spec
+!packaging/windows/PhoneRemote.spec
+packaging/windows/dist/
+*.egg-info/
+
+# Local identity, credentials, and certificates
+state.json
+server-identity.*
+server.crt
+server.key
 
 *.log
 Thumbs.db

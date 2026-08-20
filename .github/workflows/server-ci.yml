@@ -1,0 +1,51 @@
+name: Server CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "protocol/**"
+      - "packaging/windows/**"
+      - "config.example.json"
+      - ".github/workflows/server-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  test-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+      - name: Install dependencies
+        run: python -m pip install -e ".\server[dev]"
+      - name: Ruff format
+        run: ruff format --check server
+      - name: Ruff lint
+        run: ruff check server
+      - name: Server tests
+        working-directory: server
+        run: pytest --cov=phone_remote --cov-report=term-missing
+      - name: PyInstaller smoke build
+        run: >-
+          python -m PyInstaller --noconfirm --clean
+          --distpath dist --workpath build\pyinstaller
+          packaging\windows\PhoneRemote.spec
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath '.\dist\PhoneRemote.exe')) {
+            throw 'PhoneRemote.exe was not produced.'
+          }
+          $process = Start-Process -FilePath '.\dist\PhoneRemote.exe' -ArgumentList '--smoke-test' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Smoke check failed: $($process.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoneRemote-server-smoke
+          path: dist/PhoneRemote.exe
+          if-no-files-found: error
