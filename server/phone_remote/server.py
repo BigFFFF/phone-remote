@@ -30,6 +30,7 @@ from .windows_control import ControlService, WindowsBackend
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8765
+DEFAULT_WEB_PORT = 8766
 ERROR_ALREADY_EXISTS = 183
 
 
@@ -78,13 +79,20 @@ class ServerRuntime:
             network=self.network,
             logger=self.logger,
             port=args.port,
+            web_port=args.port if args.insecure_http else args.web_port,
         )
         self.http = PhoneRemoteServer((args.host, args.port), self.context)
+        self.web_http: PhoneRemoteServer | None = None
         if not args.insecure_http:
             ssl_context = self.identity_manager.create_ssl_context()
             self.http.socket = ssl_context.wrap_socket(self.http.socket, server_side=True)
+            self.web_http = PhoneRemoteServer(
+                (args.host, args.web_port),
+                self.context,
+                private_lan_only=True,
+            )
         self.publisher = DiscoveryPublisher(self.identity, args.port, self.logger)
-        self._server_thread: threading.Thread | None = None
+        self._server_threads: list[threading.Thread] = []
 
     def run(self) -> None:
         scheme = "http" if self.args.insecure_http else "https"
@@ -95,26 +103,33 @@ class ServerRuntime:
             not self.args.insecure_http,
             self.identity.server_id,
         )
+        if self.web_http is not None:
+            self.logger.info(
+                "Web Remote starting address=%s port=%s tls=False private_lan_only=True",
+                self.args.host,
+                self.args.web_port,
+            )
         if not self.args.no_discovery and not self.args.insecure_http:
             self.publisher.start()
         if self.args.no_tray:
+            self._start_background_server(self.web_http, "phone-remote-web")
             print(
                 f"Phone Remote {self.identity.display_name}: {scheme}://127.0.0.1:{self.args.port}",
                 flush=True,
             )
+            if self.web_http is not None:
+                print(
+                    f"Web Remote: http://127.0.0.1:{self.args.web_port}",
+                    flush=True,
+                )
             try:
                 self.http.serve_forever(poll_interval=0.25)
             finally:
                 self.close()
             return
 
-        self._server_thread = threading.Thread(
-            target=self.http.serve_forever,
-            kwargs={"poll_interval": 0.25},
-            name="phone-remote-http",
-            daemon=True,
-        )
-        self._server_thread.start()
+        self._start_background_server(self.http, "phone-remote-api")
+        self._start_background_server(self.web_http, "phone-remote-web")
         tray = TrayApplication(
             self.context,
             self.pairing_display,
@@ -126,18 +141,35 @@ class ServerRuntime:
         try:
             tray.run()
         finally:
-            self.stop()
             self.close()
 
     def stop(self) -> None:
-        threading.Thread(target=self.http.shutdown, daemon=True).start()
+        for server in (self.http, self.web_http):
+            if server is not None:
+                server.shutdown()
 
     def close(self) -> None:
+        self.stop()
+        for thread in self._server_threads:
+            if thread.is_alive():
+                thread.join(timeout=5)
         self.publisher.close()
         self.http.server_close()
-        if self._server_thread is not None and self._server_thread.is_alive():
-            self._server_thread.join(timeout=5)
+        if self.web_http is not None:
+            self.web_http.server_close()
         self.logger.info("server stopped")
+
+    def _start_background_server(self, server: PhoneRemoteServer | None, name: str) -> None:
+        if server is None:
+            return
+        thread = threading.Thread(
+            target=server.serve_forever,
+            kwargs={"poll_interval": 0.25},
+            name=name,
+            daemon=True,
+        )
+        thread.start()
+        self._server_threads.append(thread)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -145,6 +177,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default=os.environ.get("PHONE_REMOTE_HOST", DEFAULT_HOST))
     parser.add_argument(
         "--port", type=int, default=int(os.environ.get("PHONE_REMOTE_PORT", DEFAULT_PORT))
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=int(os.environ.get("PHONE_REMOTE_WEB_PORT", DEFAULT_WEB_PORT)),
+        help="Private-LAN HTTP port for browser-based Web Remote",
     )
     parser.add_argument("--name", help="display name (used only when identity is first created)")
     parser.add_argument("--data-dir", help="override the per-user data directory")
@@ -193,6 +231,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not 1 <= args.port <= 65535:
         raise SystemExit("port must be between 1 and 65535")
+    if not 1 <= args.web_port <= 65535:
+        raise SystemExit("web port must be between 1 and 65535")
+    if not args.insecure_http and args.web_port == args.port:
+        raise SystemExit("web port must differ from the HTTPS API port")
     if args.smoke_test:
         return run_smoke_test()
     if args.install_startup or args.remove_startup:

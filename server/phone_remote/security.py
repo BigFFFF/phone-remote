@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
+from .network import local_ipv4_addresses
 from .state import StateStore
 
 
@@ -75,7 +76,9 @@ class IdentityManager:
             self.state.write(state)
 
         certificate = self._load_or_create_certificate(
-            key, server["server_id"], server["display_name"]
+            key,
+            server["server_id"],
+            server["display_name"],
         )
         return ServerIdentity(
             server_id=server["server_id"],
@@ -116,23 +119,20 @@ class IdentityManager:
         return key
 
     def _load_or_create_certificate(
-        self, key: ec.EllipticCurvePrivateKey, server_id: str, display_name: str
+        self,
+        key: ec.EllipticCurvePrivateKey,
+        server_id: str,
+        display_name: str,
     ) -> x509.Certificate:
+        required_dns_names, required_ip_addresses, sans = _required_subject_alt_names(server_id)
         if self.certificate_path.exists() and self.tls_key_path.exists():
             try:
                 certificate = x509.load_pem_x509_certificate(self.certificate_path.read_bytes())
-                certificate_key = certificate.public_key().public_bytes(
-                    serialization.Encoding.DER,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
-                identity_key = key.public_key().public_bytes(
-                    serialization.Encoding.DER,
-                    serialization.PublicFormat.SubjectPublicKeyInfo,
-                )
                 renewal_threshold = datetime.now(UTC) + timedelta(days=30)
                 if (
-                    certificate_key == identity_key
+                    _certificate_matches_key(certificate, key)
                     and certificate.not_valid_after_utc > renewal_threshold
+                    and _certificate_covers(certificate, required_dns_names, required_ip_addresses)
                 ):
                     _private_write(
                         self.tls_key_path,
@@ -153,13 +153,6 @@ class IdentityManager:
                 (x509.NameAttribute(NameOID.COMMON_NAME, display_name[:64])),
             ]
         )
-        host = socket.gethostname()
-        sans: list[x509.GeneralName] = [
-            x509.DNSName(host),
-            x509.DNSName("localhost"),
-            x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
-            x509.UniformResourceIdentifier(f"urn:phone-remote:server:{server_id}"),
-        ]
         certificate = (
             x509.CertificateBuilder()
             .subject_name(subject)
@@ -182,6 +175,56 @@ class IdentityManager:
         )
         _private_write(self.certificate_path, certificate.public_bytes(serialization.Encoding.PEM))
         return certificate
+
+
+def _required_subject_alt_names(
+    server_id: str,
+) -> tuple[set[str], set[ipaddress.IPv4Address], list[x509.GeneralName]]:
+    dns_names = {socket.gethostname(), "localhost"}
+    ip_addresses = {ipaddress.IPv4Address("127.0.0.1")}
+    for value in local_ipv4_addresses():
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            continue
+        if isinstance(address, ipaddress.IPv4Address) and not (
+            address.is_unspecified or address.is_multicast
+        ):
+            ip_addresses.add(address)
+    sans: list[x509.GeneralName] = [
+        *(x509.DNSName(value) for value in sorted(dns_names)),
+        *(x509.IPAddress(value) for value in sorted(ip_addresses)),
+        x509.UniformResourceIdentifier(f"urn:phone-remote:server:{server_id}"),
+    ]
+    return dns_names, ip_addresses, sans
+
+
+def _certificate_matches_key(
+    certificate: x509.Certificate, key: ec.EllipticCurvePrivateKey
+) -> bool:
+    certificate_key = certificate.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    expected_key = key.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return certificate_key == expected_key
+
+
+def _certificate_covers(
+    certificate: x509.Certificate,
+    required_dns_names: set[str],
+    required_ip_addresses: set[ipaddress.IPv4Address],
+) -> bool:
+    try:
+        sans = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        return False
+    dns_names = set(sans.get_values_for_type(x509.DNSName))
+    ip_addresses = set(sans.get_values_for_type(x509.IPAddress))
+    return required_dns_names == dns_names and required_ip_addresses == ip_addresses
 
 
 def _public_key_fingerprint(key: ec.EllipticCurvePrivateKey) -> str:

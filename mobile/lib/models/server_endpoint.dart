@@ -14,6 +14,25 @@ class ServerEndpoint {
     );
   }
 
+  Uri resourceUri(Uri path) {
+    if (path.hasScheme ||
+        path.hasAuthority ||
+        path.hasFragment ||
+        !path.path.startsWith('/app-icons/') ||
+        path.pathSegments.contains('..')) {
+      throw const FormatException(
+        'Resource path must be relative to the paired PC.',
+      );
+    }
+    return Uri(
+      scheme: 'https',
+      host: host,
+      port: port,
+      path: path.path,
+      query: path.hasQuery ? path.query : null,
+    );
+  }
+
   factory ServerEndpoint.parse(String input) {
     final trimmed = input.trim();
     if (trimmed.isEmpty) {

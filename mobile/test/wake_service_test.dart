@@ -26,12 +26,16 @@ void main() {
     Uint8List? sentPacket;
     List<InternetAddress>? sentTargets;
     int? sentPort;
+    var sends = 0;
+    final waits = <Duration>[];
     final service = UdpWakeService(
       sender: (packet, targets, port) async {
+        sends += 1;
         sentPacket = packet;
         sentTargets = targets;
         sentPort = port;
       },
+      delay: (duration) async => waits.add(duration),
     );
     final device = _device(
       mac: '00:11:22:33:44:55',
@@ -50,6 +54,11 @@ void main() {
       '255.255.255.255',
     ]);
     expect(sentPort, 9);
+    expect(sends, 3);
+    expect(waits, <Duration>[
+      const Duration(milliseconds: 80),
+      const Duration(milliseconds: 80),
+    ]);
   });
 
   test('reports a missing or malformed MAC without opening a socket', () async {

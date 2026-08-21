@@ -26,13 +26,14 @@ jobs:
           channel: stable
           cache: true
       - name: Install Android SDK baseline
-        run: >-
-          sdkmanager
-          "platform-tools"
-          "platforms;android-34"
-          "platforms;android-36"
-          "build-tools;33.0.1"
-          "build-tools;36.0.0"
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "platforms;android-36" \
+            "build-tools;33.0.1" \
+            "build-tools;36.0.0"
       - name: Get dependencies
         working-directory: mobile
         run: flutter pub get

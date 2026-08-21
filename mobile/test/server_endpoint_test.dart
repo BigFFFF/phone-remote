@@ -35,5 +35,24 @@ void main() {
       endpoint.apiUri('/info').toString(),
       'https://192.168.1.20:9443/api/v1/info',
     );
+    expect(
+      endpoint.resourceUri(Uri.parse('/app-icons/steam.png?v=123')).toString(),
+      'https://192.168.1.20:9443/app-icons/steam.png?v=123',
+    );
+  });
+
+  test('resource URI cannot leave the paired PC', () {
+    const endpoint = ServerEndpoint(host: '192.168.1.20');
+    for (final value in <String>[
+      'https://example.test/app-icons/steam.png',
+      '//example.test/app-icons/steam.png',
+      '/app-icons/../secret.txt',
+      '/app-icons/steam.png#fragment',
+    ]) {
+      expect(
+        () => endpoint.resourceUri(Uri.parse(value)),
+        throwsFormatException,
+      );
+    }
   });
 }

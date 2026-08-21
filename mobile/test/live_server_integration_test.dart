@@ -17,16 +17,48 @@ void main() {
   test(
     'pairs and reconnects against the real Python HTTPS server',
     () async {
-      final portProbe =
+      final apiPortProbe =
           await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      final port = portProbe.port;
-      await portProbe.close();
+      final webPortProbe =
+          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = apiPortProbe.port;
+      final webPort = webPortProbe.port;
+      await apiPortProbe.close();
+      await webPortProbe.close();
 
       final repositoryRoot = Directory.current.parent.absolute;
       final python = Platform.environment['PHONE_REMOTE_PYTHON'] ??
           '${repositoryRoot.path}${Platform.pathSeparator}.venv${Platform.pathSeparator}Scripts${Platform.pathSeparator}python.exe';
       final dataDirectory =
           await Directory.systemTemp.createTemp('phone-remote-live-test-');
+      final iconDirectory = await Directory(
+        '${dataDirectory.path}${Platform.pathSeparator}icons',
+      ).create();
+      final iconFile = await File(
+        '${repositoryRoot.path}${Platform.pathSeparator}mobile${Platform.pathSeparator}assets${Platform.pathSeparator}branding${Platform.pathSeparator}app_icon_master.png',
+      ).copy('${iconDirectory.path}${Platform.pathSeparator}integration.png');
+      await File(
+        '${dataDirectory.path}${Platform.pathSeparator}config.json',
+      ).writeAsString(
+        jsonEncode(<String, Object?>{
+          'version': 1,
+          'browsers': <String, Object?>{},
+          'apps': <Object?>[
+            <String, Object?>{
+              'id': 'integration',
+              'name': 'Integration App',
+              'enabled': true,
+              'available': true,
+              'icon': iconFile.uri.pathSegments.last,
+              'launch': <String, Object?>{
+                'type': 'program',
+                'path': File(python).absolute.path,
+                'args': <String>[],
+              },
+            },
+          ],
+        }),
+      );
       final ready = Completer<void>();
       final pairCode = Completer<String>();
       final output = <String>[];
@@ -39,6 +71,8 @@ void main() {
           '127.0.0.1',
           '--port',
           '$port',
+          '--web-port',
+          '$webPort',
           '--name',
           'Flutter Integration PC',
           '--data-dir',
@@ -106,7 +140,11 @@ void main() {
         expect(session.status.serverId, attempt.server.serverId);
         expect(
             session.device.serverIdentity, attempt.server.identityFingerprint);
-        expect(await session.getApps(), isA<List>());
+        final apps = await session.getApps();
+        expect(apps, hasLength(1));
+        expect(apps.single.name, 'Integration App');
+        expect(apps.single.iconBytes, isNotNull);
+        expect(apps.single.iconBytes, isNotEmpty);
         session.close();
       } finally {
         process.kill();

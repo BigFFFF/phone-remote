@@ -1,36 +1,25 @@
 # Phone Remote privacy policy
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
-Phone Remote operates between devices on the user's local network. It has no Phone Remote cloud
-account, advertising, analytics SDK, third-party telemetry, or control-history upload.
+Phone Remote communicates directly over the user's local network. It has no Phone Remote cloud
+account, ads, analytics SDK, third-party telemetry, or control-history upload.
 
-## Data stored locally
+## Local data
 
-Windows Companion stores Server Identity material, TLS keys/certificate, paired-device metadata,
-salted Credential verifiers, configuration, application Catalog, and rotating operational logs in
-the Windows user's Local AppData directory. A future mobile app will store paired-PC metadata,
-settings, and Credentials locally, with Credentials protected by Android Keystore or iOS Keychain.
+Windows Companion stores configuration, Server Identity and TLS material, paired-device records,
+salted Credential verifiers, approved applications, and rotating operational logs in Local
+AppData. Mobile stores paired-PC metadata and settings locally; Credentials use Android
+Keystore/iOS Keychain-backed storage.
 
-Logs may include client ID, connect/pair results, action type, configured app ID, and errors. They
-do not intentionally record Bearer Credentials, pairing codes, keyboard text, passwords, or raw
-sensitive request bodies.
-
-## Network use and sharing
-
-The product exchanges discovery, pairing, status, and remote-control messages directly over the
-local network. It does not send this data to the project owner or sell/share it with advertisers or
-data brokers. Users should not expose Companion to the public internet.
+Logs may include client IDs, connection or pairing results, action types, approved app IDs, and
+errors. They are not intended to contain Credentials, pairing codes, keyboard text, passwords, or
+raw sensitive request bodies.
 
 ## Retention and deletion
 
-Pairing records remain until the user removes a device, revokes all devices, or explicitly deletes
-Phone Remote user data. Uninstall preserves settings by default for reinstall continuity and offers
-an explicit full-cleanup choice. Log rotation removes older log files automatically; users may also
-delete the local logs while Companion is stopped.
+Pairings remain until revoked or user data is deleted. Windows uninstall preserves user data by
+default and offers explicit full cleanup. Old logs are removed by rotation.
 
-## Contact and changes
-
-Use the repository's owner contact channel for privacy questions without attaching secret keys,
-Credentials, pairing codes, keyboard content, or raw state files. Material behavior changes must
-be reflected in this policy before release.
+Privacy questions should use the repository owner's contact channel without attaching secrets or
+raw state files. This policy must be updated before any material data-handling change is released.

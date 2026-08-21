@@ -20,17 +20,23 @@ void main() {
     dispatcher.dispose();
   });
 
-  test('keeps at most one aggregate queued while a request is in flight',
+  test('keeps a bounded number of sends in flight without waiting for RTT',
       () async {
-    final firstRequest = Completer<void>();
+    final requests = <Completer<void>>[];
     final calls = <(double, double)>[];
+    var active = 0;
+    var maxActive = 0;
     final dispatcher = PointerMoveDispatcher(
       interval: const Duration(milliseconds: 2),
+      maxConcurrentSends: 2,
       send: (dx, dy) async {
         calls.add((dx, dy));
-        if (calls.length == 1) {
-          await firstRequest.future;
-        }
+        active += 1;
+        maxActive = active > maxActive ? active : maxActive;
+        final request = Completer<void>();
+        requests.add(request);
+        await request.future;
+        active -= 1;
       },
     );
 
@@ -39,12 +45,26 @@ void main() {
     for (var index = 0; index < 100; index += 1) {
       dispatcher.add(1, -1);
     }
-    expect(calls, hasLength(1));
-
-    firstRequest.complete();
-    await Future<void>.delayed(const Duration(milliseconds: 15));
-
+    await Future<void>.delayed(const Duration(milliseconds: 8));
     expect(calls, <(double, double)>[(1, 1), (100, -100)]);
+
+    for (var index = 0; index < 50; index += 1) {
+      dispatcher.add(1, 2);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 8));
+    expect(calls, hasLength(2));
+
+    requests.first.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 8));
+
+    expect(
+      calls,
+      <(double, double)>[(1, 1), (100, -100), (50, 100)],
+    );
+    expect(maxActive, 2);
+    for (final request in requests.skip(1)) {
+      request.complete();
+    }
     dispatcher.dispose();
   });
 }

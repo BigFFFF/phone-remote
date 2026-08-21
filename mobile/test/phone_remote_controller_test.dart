@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phone_remote/application/phone_remote_controller.dart';
 import 'package:phone_remote/models/api_models.dart';
@@ -78,6 +80,117 @@ void main() {
     expect(sessions.attempts, 2);
     expect(wake.sent, 1);
     expect(waits, <Duration>[const Duration(seconds: 1)]);
+  });
+
+  test('sleep marks the session offline and exposes the Wake on LAN retry',
+      () async {
+    final repository = RealDeviceRepository(
+      metadataStorage: MemoryMetadataStorage(),
+      credentialStorage: MemoryCredentialStorage(),
+    );
+    final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
+    await repository.savePaired(device, 'secret');
+    final controller = PhoneRemoteController(
+      deviceRepository: repository,
+      discoveryService: const _FakeDiscoveryService(),
+      pairingService: PairingService(
+        apiClientFactory: _apiFactory(),
+        deviceRepository: repository,
+      ),
+      remoteSessionFactory: _AlwaysConnectedSessionFactory(),
+      wakeService: _RecordingWakeService(),
+    );
+    await controller.connect(device);
+
+    await controller.sendPowerAction('sleep');
+
+    expect(controller.connectionPhase, RemoteConnectionPhase.offline);
+    expect(controller.connectionError, contains('Wake on LAN'));
+  });
+
+  test('an old wake retry cannot overwrite a newer PC connection', () async {
+    final repository = RealDeviceRepository(
+      metadataStorage: MemoryMetadataStorage(),
+      credentialStorage: MemoryCredentialStorage(),
+    );
+    final first = _device('first').copyWith(mac: '00:11:22:33:44:55');
+    final second = _device('second');
+    await repository.savePaired(first, 'first-secret');
+    await repository.savePaired(second, 'second-secret');
+    final delayStarted = Completer<void>();
+    final resumeWakeRetry = Completer<void>();
+    final controller = PhoneRemoteController(
+      deviceRepository: repository,
+      discoveryService: const _FakeDiscoveryService(),
+      pairingService: PairingService(
+        apiClientFactory: _apiFactory(),
+        deviceRepository: repository,
+      ),
+      remoteSessionFactory: _SwitchingSessionFactory(),
+      wakeService: _RecordingWakeService(),
+      delay: (_) {
+        if (!delayStarted.isCompleted) {
+          delayStarted.complete();
+        }
+        return resumeWakeRetry.future;
+      },
+    );
+
+    final firstConnection = controller.connect(first);
+    await delayStarted.future;
+    await controller.connect(second, autoWake: false);
+    expect(controller.connectionPhase, RemoteConnectionPhase.connected);
+    expect(controller.selectedDevice?.serverId, 'second');
+
+    resumeWakeRetry.complete();
+    await firstConnection;
+
+    expect(controller.connectionPhase, RemoteConnectionPhase.connected);
+    expect(controller.selectedDevice?.serverId, 'second');
+  });
+
+  test('an old app request cannot overwrite the newer PC app list', () async {
+    final repository = RealDeviceRepository(
+      metadataStorage: MemoryMetadataStorage(),
+      credentialStorage: MemoryCredentialStorage(),
+    );
+    final first = _device('first');
+    final second = _device('second');
+    await repository.savePaired(first, 'first-secret');
+    await repository.savePaired(second, 'second-secret');
+    final oldAppsStarted = Completer<void>();
+    final oldApps = Completer<List<ConfiguredApp>>();
+    final controller = PhoneRemoteController(
+      deviceRepository: repository,
+      discoveryService: const _FakeDiscoveryService(),
+      pairingService: PairingService(
+        apiClientFactory: _apiFactory(),
+        deviceRepository: repository,
+      ),
+      remoteSessionFactory: _OverlappingAppsSessionFactory(
+        oldAppsStarted,
+        oldApps,
+      ),
+      wakeService: const UnavailableWakeService('Unavailable in tests.'),
+    );
+
+    final firstConnection = controller.connect(first, autoWake: false);
+    await oldAppsStarted.future;
+    await controller.connect(second, autoWake: false);
+    expect(controller.apps.single.id, 'second-app');
+
+    oldApps.complete(const <ConfiguredApp>[
+      ConfiguredApp(
+        id: 'first-app',
+        name: 'First App',
+        available: true,
+        icon: '/first.png',
+      ),
+    ]);
+    await firstConnection;
+
+    expect(controller.apps.single.id, 'second-app');
+    expect(controller.selectedDevice?.serverId, 'second');
   });
 }
 
@@ -164,6 +277,70 @@ class _FlakySessionFactory implements RemoteSessionFactory {
     }
     return _TestRemoteSession(device);
   }
+}
+
+class _AlwaysConnectedSessionFactory implements RemoteSessionFactory {
+  @override
+  Future<RemoteSession> connect(Device device) async =>
+      _TestRemoteSession(device);
+}
+
+class _SwitchingSessionFactory implements RemoteSessionFactory {
+  var _firstAttempts = 0;
+
+  @override
+  Future<RemoteSession> connect(Device device) async {
+    if (device.serverId == 'first' && _firstAttempts++ == 0) {
+      throw const ApiException('PC is offline.');
+    }
+    return _TestRemoteSession(device);
+  }
+}
+
+class _OverlappingAppsSessionFactory implements RemoteSessionFactory {
+  _OverlappingAppsSessionFactory(this.oldAppsStarted, this.oldApps);
+
+  final Completer<void> oldAppsStarted;
+  final Completer<List<ConfiguredApp>> oldApps;
+
+  @override
+  Future<RemoteSession> connect(Device device) async {
+    if (device.serverId == 'first') {
+      return _BlockingAppsSession(device, oldAppsStarted, oldApps);
+    }
+    return _ConfiguredAppsSession(device, const <ConfiguredApp>[
+      ConfiguredApp(
+        id: 'second-app',
+        name: 'Second App',
+        available: true,
+        icon: '/second.png',
+      ),
+    ]);
+  }
+}
+
+class _BlockingAppsSession extends _TestRemoteSession {
+  _BlockingAppsSession(super.device, this.started, this.result);
+
+  final Completer<void> started;
+  final Completer<List<ConfiguredApp>> result;
+
+  @override
+  Future<List<ConfiguredApp>> getApps() {
+    if (!started.isCompleted) {
+      started.complete();
+    }
+    return result.future;
+  }
+}
+
+class _ConfiguredAppsSession extends _TestRemoteSession {
+  _ConfiguredAppsSession(super.device, this.configuredApps);
+
+  final List<ConfiguredApp> configuredApps;
+
+  @override
+  Future<List<ConfiguredApp>> getApps() async => configuredApps;
 }
 
 class _TestRemoteSession implements RemoteSession {

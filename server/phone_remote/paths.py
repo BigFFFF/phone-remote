@@ -61,35 +61,26 @@ class RuntimePaths:
         )
 
     def prepare(self) -> list[str]:
-        """Create private user storage and migrate only when the destination is absent."""
+        """Create private user storage from the current bundled defaults."""
         events: list[str] = []
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.log_root.mkdir(parents=True, exist_ok=True)
         self.icon_root.mkdir(parents=True, exist_ok=True)
 
         if not self.config_path.exists():
-            legacy = self.executable_root / "config.json"
             example_candidates = [
                 self.bundle_root / "config.example.json",
                 self.executable_root / "config.example.json",
             ]
-            source = (
-                legacy
-                if legacy.is_file()
-                else next((item for item in example_candidates if item.is_file()), None)
-            )
+            source = next((item for item in example_candidates if item.is_file()), None)
             if source is not None:
                 shutil.copy2(source, self.config_path)
                 events.append(f"copied config from {source}")
 
-        legacy_icons = self.executable_root / "icons"
         bundled_icons = self.bundle_root / "resources" / "icons"
-        for source_root in (legacy_icons, bundled_icons):
-            if not source_root.is_dir():
-                continue
-            for source in source_root.iterdir():
-                destination = self.icon_root / source.name
-                if source.is_file() and not destination.exists():
-                    shutil.copy2(source, destination)
-            events.append(f"copied missing icons from {source_root}")
+        default_icon = bundled_icons / "default.svg"
+        destination = self.icon_root / "default.svg"
+        if default_icon.is_file() and not destination.exists():
+            shutil.copy2(default_icon, destination)
+            events.append(f"copied default icon from {default_icon}")
         return events

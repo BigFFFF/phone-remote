@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -195,11 +196,18 @@ class _RemotePageState extends State<_RemotePage> {
     );
   }
 
+  void _setLastAction(String label) {
+    if (_lastAction == label) {
+      return;
+    }
+    setState(() => _lastAction = label);
+  }
+
   Future<void> _invoke(
     String label,
     Future<void> Function(PhoneRemoteController controller) operation,
   ) async {
-    setState(() => _lastAction = label);
+    _setLastAction(label);
     if (widget.demo) {
       return;
     }
@@ -220,235 +228,271 @@ class _RemotePageState extends State<_RemotePage> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        if (!widget.demo && widget.controller != null)
-          _ConnectionBanner(controller: widget.controller!),
-        SegmentedButton<bool>(
-          segments: const <ButtonSegment<bool>>[
-            ButtonSegment<bool>(
-              value: true,
-              icon: Icon(Icons.touch_app_rounded),
-              label: Text('Touchpad'),
-            ),
-            ButtonSegment<bool>(
-              value: false,
-              icon: Icon(Icons.gamepad_rounded),
-              label: Text('D-pad'),
-            ),
-          ],
-          selected: <bool>{_touchpad},
-          onSelectionChanged: (selection) {
-            setState(() => _touchpad = selection.single);
-          },
+    final quickControls = <Widget>[
+      _QuickControl(
+        label: 'Back',
+        icon: Icons.arrow_back,
+        onTap: () => _invoke(
+          'Back',
+          (controller) => controller.sendAction('escape'),
         ),
-        const SizedBox(height: 16),
-        if (_touchpad)
-          _TouchpadSurface(
-            status: _lastAction,
-            onMove: (delta) {
-              setState(() => _lastAction = 'Pointer move');
-              if (!widget.demo) {
-                _moves.add(delta.dx * 1.35, delta.dy * 1.35);
-              }
+      ),
+      _QuickControl(
+        label: 'Keyboard',
+        icon: Icons.keyboard,
+        onTap: () => _openKeyboard(context),
+      ),
+      _QuickControl(
+        label: 'Fullscreen',
+        icon: Icons.fullscreen,
+        onTap: () => _invoke(
+          'Fullscreen',
+          (controller) => controller.sendAction('f11'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Volume down',
+        icon: Icons.volume_down,
+        onTap: () => _invoke(
+          'Volume down',
+          (controller) => controller.sendAction('volume_down'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Mute',
+        icon: Icons.volume_off,
+        onTap: () => _invoke(
+          'Mute',
+          (controller) => controller.sendAction('volume_mute'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Volume up',
+        icon: Icons.volume_up,
+        onTap: () => _invoke(
+          'Volume up',
+          (controller) => controller.sendAction('volume_up'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Previous',
+        icon: Icons.skip_previous,
+        onTap: () => _invoke(
+          'Previous',
+          (controller) => controller.sendAction('media_previous'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Play / Pause',
+        icon: Icons.play_arrow,
+        onTap: () => _invoke(
+          'Play / Pause',
+          (controller) => controller.sendAction('media_play_pause'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Next',
+        icon: Icons.skip_next,
+        onTap: () => _invoke(
+          'Next',
+          (controller) => controller.sendAction('media_next'),
+        ),
+      ),
+    ];
+
+    return Padding(
+      key: const ValueKey<String>('remote-page'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        children: <Widget>[
+          if (!widget.demo && widget.controller != null)
+            _ConnectionBanner(controller: widget.controller!),
+          SegmentedButton<bool>(
+            segments: const <ButtonSegment<bool>>[
+              ButtonSegment<bool>(
+                value: true,
+                icon: Icon(Icons.touch_app_rounded),
+                label: Text('Touchpad'),
+              ),
+              ButtonSegment<bool>(
+                value: false,
+                icon: Icon(Icons.gamepad_rounded),
+                label: Text('D-pad'),
+              ),
+            ],
+            selected: <bool>{_touchpad},
+            onSelectionChanged: (selection) {
+              setState(() => _touchpad = selection.single);
             },
-            onWheel: (delta) {
-              setState(() => _lastAction = 'Scroll');
-              if (!widget.demo) {
-                _wheel.add(0, delta);
-              }
-            },
-            onLeftClick: () => _invoke(
-              'Left click',
-              (controller) => controller.sendMouseClick(),
-            ),
-            onRightClick: () => _invoke(
-              'Right click',
-              (controller) => controller.sendMouseClick(button: 'right'),
-            ),
-            onDoubleClick: () => _invoke(
-              'Double click',
-              (controller) => controller.sendMouseDoubleClick(),
-            ),
-          )
-        else
-          _Dpad(
-            onAction: (label, action) =>
-                _invoke(label, (controller) => controller.sendAction(action)),
           ),
-        const SizedBox(height: 16),
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 1.8,
-          children: <Widget>[
-            _QuickControl(
-              label: 'Back',
-              icon: Icons.arrow_back,
-              onTap: () => _invoke(
-                'Back',
-                (controller) => controller.sendAction('escape'),
-              ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _touchpad
+                ? _TouchpadSurface(
+                    status: _lastAction,
+                    onMove: (delta) {
+                      _setLastAction('Pointer move');
+                      if (!widget.demo) {
+                        _moves.add(delta.dx * 1.35, delta.dy * 1.35);
+                      }
+                    },
+                    onWheel: (delta) {
+                      _setLastAction('Scroll');
+                      if (!widget.demo) {
+                        _wheel.add(0, delta);
+                      }
+                    },
+                    onLeftClick: () => _invoke(
+                      'Left click',
+                      (controller) => controller.sendMouseClick(),
+                    ),
+                    onRightClick: () => _invoke(
+                      'Right click',
+                      (controller) =>
+                          controller.sendMouseClick(button: 'right'),
+                    ),
+                    onDoubleClick: () => _invoke(
+                      'Double click',
+                      (controller) => controller.sendMouseDoubleClick(),
+                    ),
+                  )
+                : _Dpad(
+                    onAction: (label, action) => _invoke(
+                      label,
+                      (controller) => controller.sendAction(action),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 140,
+            child: Column(
+              children: <Widget>[
+                for (var row = 0; row < 3; row++) ...<Widget>[
+                  if (row > 0) const SizedBox(height: 4),
+                  Expanded(
+                    child: Row(
+                      children: <Widget>[
+                        for (var column = 0; column < 3; column++) ...<Widget>[
+                          if (column > 0) const SizedBox(width: 8),
+                          Expanded(child: quickControls[row * 3 + column]),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
-            _QuickControl(
-              label: 'Keyboard',
-              icon: Icons.keyboard,
-              onTap: () => _openKeyboard(context),
-            ),
-            _QuickControl(
-              label: 'Full',
-              icon: Icons.fullscreen,
-              onTap: () => _invoke(
-                'Fullscreen',
-                (controller) => controller.sendAction('f11'),
-              ),
-            ),
-            _QuickControl(
-              label: 'Vol−',
-              icon: Icons.volume_down,
-              onTap: () => _invoke(
-                'Volume down',
-                (controller) => controller.sendAction('volume_down'),
-              ),
-            ),
-            _QuickControl(
-              label: 'Mute',
-              icon: Icons.volume_off,
-              onTap: () => _invoke(
-                'Mute',
-                (controller) => controller.sendAction('volume_mute'),
-              ),
-            ),
-            _QuickControl(
-              label: 'Vol+',
-              icon: Icons.volume_up,
-              onTap: () => _invoke(
-                'Volume up',
-                (controller) => controller.sendAction('volume_up'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _QuickControl(
-                label: 'Previous',
-                icon: Icons.skip_previous,
-                onTap: () => _invoke(
-                  'Previous',
-                  (controller) => controller.sendAction('media_previous'),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _QuickControl(
-                label: 'Play',
-                icon: Icons.play_arrow,
-                onTap: () => _invoke(
-                  'Play / Pause',
-                  (controller) => controller.sendAction('media_play_pause'),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _QuickControl(
-                label: 'Next',
-                icon: Icons.skip_next,
-                onTap: () => _invoke(
-                  'Next',
-                  (controller) => controller.sendAction('media_next'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
   Future<void> _openKeyboard(BuildContext context) async {
-    final input = TextEditingController();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: input,
-              autofocus: true,
-              maxLength: 2000,
-              minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Text Input',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: <Widget>[
-                for (final item in const <(String, String)>[
-                  ('Enter', 'enter'),
-                  ('Tab', 'tab'),
-                  ('Escape', 'escape'),
-                  ('⌫', 'back'),
-                ])
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: OutlinedButton(
-                        onPressed: () => _invoke(
-                          item.$1,
-                          (controller) => controller.sendAction(item.$2),
-                        ),
-                        child: Text(item.$1),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () async {
-                  final text = input.text;
-                  if (text.isEmpty) {
-                    return;
-                  }
-                  await _invoke(
-                    'Text sent',
-                    (controller) => controller.sendText(text),
-                  );
-                  if (sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop();
-                  }
-                },
-                icon: const Icon(Icons.send),
-                label: const Text('Send'),
-              ),
-            ),
-          ],
-        ),
+      useSafeArea: true,
+      builder: (sheetContext) => _KeyboardSheet(
+        onAction: (label, action) =>
+            _invoke(label, (controller) => controller.sendAction(action)),
+        onSend: (text) =>
+            _invoke('Text sent', (controller) => controller.sendText(text)),
       ),
     );
-    input.dispose();
+  }
+}
+
+class _KeyboardSheet extends StatefulWidget {
+  const _KeyboardSheet({required this.onAction, required this.onSend});
+
+  final Future<void> Function(String label, String action) onAction;
+  final Future<void> Function(String text) onSend;
+
+  @override
+  State<_KeyboardSheet> createState() => _KeyboardSheetState();
+}
+
+class _KeyboardSheetState extends State<_KeyboardSheet> {
+  final TextEditingController _input = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _input.text;
+    if (text.isEmpty || _sending) {
+      return;
+    }
+    setState(() => _sending = true);
+    await widget.onSend(text);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TextField(
+            controller: _input,
+            autofocus: true,
+            maxLength: 2000,
+            minLines: 1,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Text Input',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              for (final item in const <(String, String)>[
+                ('Enter', 'enter'),
+                ('Tab', 'tab'),
+                ('Escape', 'escape'),
+                ('⌫', 'back'),
+              ])
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: OutlinedButton(
+                      onPressed: _sending
+                          ? null
+                          : () => widget.onAction(item.$1, item.$2),
+                      child: Text(item.$1),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: const Icon(Icons.send),
+              label: const Text('Send'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -598,26 +642,36 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
     return Semantics(
       label:
           'Touchpad. One finger moves. Tap clicks. Two-finger tap right-clicks. Two-finger drag scrolls.',
-      child: Listener(
+      child: RawGestureDetector(
+        key: const ValueKey<String>('touchpad-surface'),
         behavior: HitTestBehavior.opaque,
-        onPointerDown: _down,
-        onPointerMove: _move,
-        onPointerUp: _up,
-        onPointerCancel: _up,
-        child: Container(
-          height: 330,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
+        gestures: <Type, GestureRecognizerFactory>{
+          EagerGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+            EagerGestureRecognizer.new,
+            (_) {},
           ),
-          child: Center(
-            child: Text(
-              'Touchpad\n\n${widget.status}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
+        },
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: _down,
+          onPointerMove: _move,
+          onPointerUp: _up,
+          onPointerCancel: _up,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'Touchpad\n\n${widget.status}',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
           ),
         ),
@@ -633,38 +687,35 @@ class _Dpad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 330,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          _RoundControl(
-            icon: Icons.keyboard_arrow_up,
-            onTap: () => onAction('Up', 'up'),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              _RoundControl(
-                icon: Icons.keyboard_arrow_left,
-                onTap: () => onAction('Left', 'left'),
-              ),
-              _RoundControl(
-                icon: Icons.circle_outlined,
-                onTap: () => onAction('Enter', 'enter'),
-              ),
-              _RoundControl(
-                icon: Icons.keyboard_arrow_right,
-                onTap: () => onAction('Right', 'right'),
-              ),
-            ],
-          ),
-          _RoundControl(
-            icon: Icons.keyboard_arrow_down,
-            onTap: () => onAction('Down', 'down'),
-          ),
-        ],
-      ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        _RoundControl(
+          icon: Icons.keyboard_arrow_up,
+          onTap: () => onAction('Up', 'up'),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            _RoundControl(
+              icon: Icons.keyboard_arrow_left,
+              onTap: () => onAction('Left', 'left'),
+            ),
+            _RoundControl(
+              icon: Icons.circle_outlined,
+              onTap: () => onAction('Enter', 'enter'),
+            ),
+            _RoundControl(
+              icon: Icons.keyboard_arrow_right,
+              onTap: () => onAction('Right', 'right'),
+            ),
+          ],
+        ),
+        _RoundControl(
+          icon: Icons.keyboard_arrow_down,
+          onTap: () => onAction('Down', 'down'),
+        ),
+      ],
     );
   }
 }
@@ -740,7 +791,7 @@ class _RoundControlState extends State<_RoundControl> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       child: Semantics(
         button: true,
         child: Listener(
@@ -749,15 +800,15 @@ class _RoundControlState extends State<_RoundControl> {
           onPointerCancel: _cancel,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 90),
-            width: 66,
-            height: 66,
+            width: 58,
+            height: 58,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _pressed
                   ? Theme.of(context).colorScheme.secondaryContainer
                   : Theme.of(context).colorScheme.surfaceContainerHighest,
             ),
-            child: Icon(widget.icon, size: 34),
+            child: Icon(widget.icon, size: 32),
           ),
         ),
       ),
@@ -778,10 +829,24 @@ class _QuickControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton.tonalIcon(
-      onPressed: onTap,
-      icon: Icon(icon),
-      label: Text(label),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: SizedBox.expand(
+          child: FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: onTap,
+            child: ExcludeSemantics(child: Icon(icon)),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -838,7 +903,7 @@ class _AppsPage extends StatelessWidget {
         for (final app in apps)
           _AppCard(
             name: app.name,
-            icon: Icons.desktop_windows_rounded,
+            iconBytes: app.iconBytes,
             available: app.available,
             onTap: () => _launch(context, current, app.id, app.name),
           ),
@@ -872,13 +937,15 @@ class _AppsPage extends StatelessWidget {
 class _AppCard extends StatelessWidget {
   const _AppCard({
     required this.name,
-    required this.icon,
     required this.available,
     required this.onTap,
+    this.icon,
+    this.iconBytes,
   });
 
   final String name;
-  final IconData icon;
+  final IconData? icon;
+  final Uint8List? iconBytes;
   final bool available;
   final VoidCallback onTap;
 
@@ -891,7 +958,20 @@ class _AppCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(icon, size: 48),
+            if (iconBytes != null)
+              Image.memory(
+                iconBytes!,
+                key: ValueKey<String>('app-icon-$name'),
+                width: 52,
+                height: 52,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.desktop_windows_rounded,
+                  size: 48,
+                ),
+              )
+            else
+              Icon(icon ?? Icons.desktop_windows_rounded, size: 48),
             const SizedBox(height: 12),
             Text(name),
             if (!available)

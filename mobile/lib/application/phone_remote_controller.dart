@@ -191,11 +191,16 @@ class PhoneRemoteController extends ChangeNotifier {
         Duration(seconds: 2),
         Duration(seconds: 3),
         Duration(seconds: 5),
+        Duration(seconds: 8),
+        Duration(seconds: 12),
       ]) {
         if (generation != _connectionGeneration) {
           return;
         }
         await _delay(wait);
+        if (generation != _connectionGeneration) {
+          return;
+        }
         _connectionPhase = RemoteConnectionPhase.connecting;
         notifyListeners();
         try {
@@ -242,23 +247,44 @@ class PhoneRemoteController extends ChangeNotifier {
     _session = session;
     _selectedDevice = session.device;
     await _deviceRepository.save(session.device);
+    if (generation != _connectionGeneration || !identical(_session, session)) {
+      session.close();
+      return;
+    }
     _connectionPhase = RemoteConnectionPhase.connected;
     _connectionError = session.status.configOk
         ? null
         : session.status.configError ?? 'The PC configuration needs attention.';
     notifyListeners();
+    var apps = const <ConfiguredApp>[];
+    String? appsError;
     try {
-      _apps = await session.getApps();
+      apps = await session.getApps();
+    } on IdentityMismatchException catch (error) {
+      session.close();
+      _failConnection(
+        RemoteConnectionPhase.identityMismatch,
+        error.message,
+        generation,
+      );
+      return;
     } on ApiException catch (error) {
-      _connectionError =
-          'Connected, but apps could not be loaded: ${error.message}';
+      appsError = 'Connected, but apps could not be loaded: ${error.message}';
     } catch (_) {
-      _connectionError = 'Connected, but the PC returned an invalid app list.';
+      appsError = 'Connected, but the PC returned an invalid app list.';
     }
-    if (generation == _connectionGeneration) {
-      await refreshDevices();
-      notifyListeners();
+    if (generation != _connectionGeneration || !identical(_session, session)) {
+      return;
     }
+    _apps = apps;
+    if (appsError != null) {
+      _connectionError = appsError;
+    }
+    await refreshDevices();
+    if (generation != _connectionGeneration || !identical(_session, session)) {
+      return;
+    }
+    notifyListeners();
   }
 
   Future<bool> _canWake(Device device, int generation) async {
@@ -307,8 +333,22 @@ class PhoneRemoteController extends ChangeNotifier {
   Future<void> sendText(String text) =>
       _run((session) => session.sendText(text));
 
-  Future<void> sendPowerAction(String action) =>
-      _run((session) => session.sendPowerAction(action));
+  Future<void> sendPowerAction(String action) async {
+    final activeSession = _session;
+    await _run((session) => session.sendPowerAction(action));
+    if ((action == 'sleep' || action == 'hibernate') &&
+        identical(_session, activeSession)) {
+      _connectionGeneration += 1;
+      activeSession?.close();
+      _session = null;
+      _apps = const <ConfiguredApp>[];
+      _connectionPhase = RemoteConnectionPhase.offline;
+      _connectionError = action == 'sleep'
+          ? 'The PC is sleeping. Tap Retry to send Wake on LAN.'
+          : 'The PC is hibernating. Wake on LAN may be unavailable.';
+      notifyListeners();
+    }
+  }
 
   Future<void> launchApp(String appId) =>
       _run((session) => session.launchApp(appId));

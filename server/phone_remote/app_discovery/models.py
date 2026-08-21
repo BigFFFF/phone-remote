@@ -55,7 +55,13 @@ def program_candidate(
     )
 
 
-def appx_candidate(*, name: str, app_user_model_id: str, source: str) -> DiscoveredApp | None:
+def appx_candidate(
+    *,
+    name: str,
+    app_user_model_id: str,
+    source: str,
+    icon: str | None = None,
+) -> DiscoveredApp | None:
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,160}![A-Za-z0-9._-]{1,80}", app_user_model_id):
         return None
     return DiscoveredApp(
@@ -64,6 +70,7 @@ def appx_candidate(*, name: str, app_user_model_id: str, source: str) -> Discove
         launch={"type": "appx", "appUserModelId": app_user_model_id},
         source=source,
         sources=[source],
+        icon=icon,
         confidence=75,
     )
 
@@ -82,4 +89,6 @@ def _discovery_id(kind: str, identity: str) -> str:
 
 def _clean_name(value: str, fallback: str) -> str:
     cleaned = " ".join(str(value or "").split()).strip()
+    if "\ufffd" in cleaned or any(not character.isprintable() for character in cleaned):
+        cleaned = ""
     return (cleaned or fallback)[:80]

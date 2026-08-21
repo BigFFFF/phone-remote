@@ -1,4 +1,3 @@
-# Launch Screen Assets
+# Launch image
 
-Phone Remote uses the branded rounded app tile in this image set. The launch storyboard presents it
-at 168 points on the same deep-navy background used by the Android launch theme.
+Branded launch tile used by the iOS launch storyboard.

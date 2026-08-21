@@ -1,27 +1,22 @@
-# Release gate report
+# Release status
 
-Status as of 2026-08-21. `Complete` means implemented in source and covered by local tests;
-installer/real-device items remain separate acceptance gates.
+Status as of 2026-08-22.
 
-| Area | Status | Evidence / remaining gate |
-| --- | --- | --- |
-| Python monorepo server | Complete | `server/phone_remote`, Python 3.12 |
-| API v1 and OpenAPI | Complete | `protocol/openapi.yaml`, API tests |
-| Persistent Identity/TLS | Complete | ECDSA P-256 identity, certificate persistence tests |
-| Pairing/auth/multi-client | Complete | independent hash records, rate/expiry/revocation tests |
-| Windows controls | Complete in source | mocked tests; real-PC UX acceptance remains |
-| Application discovery/Catalog | Complete in source | four providers, approval gate, missing detection tests |
-| Tray/local management/Web Fallback | Complete in source | manual UI acceptance remains |
-| mDNS/network/firewall support | Complete in source | Private/LocalSubnet command tests; VM acceptance remains |
-| PyInstaller executable | Built | local `PhoneRemote.exe --smoke-test` passed; unsigned |
-| Inno Setup installer | Built | `PhoneRemoteSetup.exe` compiled; fresh/upgrade/uninstall VM matrix remains |
-| Server CI | Complete in source | first GitHub run remains external |
-| Flutter core architecture | Complete in source | native onboarding, discovery, pairing, secure multi-PC storage, reconnect and Demo |
-| Flutter remote controls | Complete in source | Touchpad throttling, D-pad, keyboard, media, approved apps and guarded power UI; real-phone UX acceptance remains |
-| Android/WoL | APK/AAB structure built | API 36, adaptive/round/legacy icons and Android 12/legacy Splash build passed; physical-device LAN/WoL and signed AAB remain |
-| iOS | Project ready in source | Opaque exact-size App Icons, branded Launch Screen, Keychain storage and graceful unavailable Wake capability; macOS/Xcode no-sign CI run remains |
-| Mobile CI | Complete in source | Android analyze/test/APK plus macOS iOS no-sign workflow; first hosted run remains external |
-| Store signing/accounts/entitlements | External | see `STORE_RELEASE.md` |
+## Implemented and locally tested
 
-No release, store upload, developer-account creation, signing, or entitlement request was
-performed automatically.
+- API v1, identity, pairing, authentication, revocation, controls, and approved-app Catalog
+- Tray management, Web Remote, mDNS, network policy, packaging scripts, and CI definitions
+- Flutter onboarding, discovery, secure multi-PC storage, Remote controls, Demo mode, and Android WoL
+- Android APK/AAB project structure and iOS project/resources
+- GitHub `v1.1.0` direct-download packaging: signed Android APK and Windows Inno Setup installer
+
+## Remaining acceptance work
+
+- Windows installer matrix and real-PC control UX
+- Physical Android LAN, control, and Wake on LAN testing
+- macOS/Xcode and physical iPhone validation
+- First hosted CI runs, Windows Authenticode signing, store metadata, and store publication
+
+See `STORE_RELEASE.md` for platform release gates. The Android APK is signed with the project's
+locally retained release key. The Windows installer is not Authenticode-signed because no trusted
+code-signing certificate is configured; no store approval or entitlement approval is claimed.

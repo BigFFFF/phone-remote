@@ -1,35 +1,19 @@
 # Store and release gates
 
-This file records external gates; it is not evidence that any account, signing key, entitlement,
-or store approval exists.
+Source readiness does not imply signing, store approval, or publication.
 
-## Windows
+| Platform | Remaining manual work |
+| --- | --- |
+| Windows | Obtain a trusted Authenticode certificate and run the clean-VM install/upgrade/uninstall matrix |
+| Android | Sign AAB, test LAN/control/WoL on physical devices, complete Play listing and privacy forms |
+| iOS | Build on current supported Xcode, test physical devices, sign, prepare TestFlight/App Store metadata |
 
-- Code-signing certificate and signed installer: pending external credential
-- SmartScreen reputation: pending signed distribution
-- Installer VM matrix and RC acceptance: pending final RC execution
-- GitHub Release publication: manual and not performed automatically
+GitHub `v1.1.0` provides a signed Android APK and an unsigned Windows installer for direct download.
+The Android release key is retained locally and excluded from version control. Store publication is a
+separate gate from this direct-download release.
 
-## Android
+Re-check current store SDK, signing, privacy, and entitlement requirements at submission time.
+Request Apple multicast entitlement only if the shipping iOS Wake implementation needs it; no
+approval is currently claimed.
 
-The Flutter project, Keystore-backed credential storage, native UI, Android WoL, API 36 build
-configuration, adaptive/round/legacy launcher artwork, Android 12/legacy launch resources, debug
-APK, and unsigned Release APK/AAB structure are implemented. Remaining gates are a real signing
-key, signed AAB, physical-device LAN/control/WoL matrix, Play Console listing, privacy forms, and
-internal testing. At release time re-check current Google Play target API and signing requirements
-rather than relying on a dated plan statement.
-
-## iOS
-
-The Flutter/iOS project, Keychain-backed credential storage, Bonjour declarations, local-network
-privacy string, exact-size opaque App Icons, branded Launch Screen, shared native UI, and graceful
-unavailable Wake capability are implemented in source. Xcode no-sign compilation, physical-device
-validation, signing, TestFlight, screenshots, and App Store metadata remain. Formal
-build/archive/signing requires macOS, Xcode 16+ (or the then-current supported baseline), and
-CocoaPods. Multicast networking entitlement must be requested from Apple if a future iOS WoL
-implementation requires it; no approval is claimed.
-
-## Production control
-
-No workflow in this repository publishes a Production store release. Windows, Play, TestFlight,
-and App Store publication retain a final manual confirmation.
+Production publication always requires a final manual decision.

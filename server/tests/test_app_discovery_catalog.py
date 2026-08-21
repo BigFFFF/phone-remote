@@ -2,9 +2,11 @@ import json
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from phone_remote.app_discovery.discovery import ApplicationDiscovery, merge_candidates
 from phone_remote.app_discovery.models import appx_candidate, program_candidate
+from phone_remote.app_discovery.start_menu import _best_name, _is_user_facing_shortcut
 from phone_remote.catalog import ApplicationCatalog
 from phone_remote.config import ConfigStore
 
@@ -52,6 +54,32 @@ def test_candidate_normalization_rejects_untrusted_paths(tmp_path: Path) -> None
         program_candidate(name="App", executable=str(tmp_path / "file.cmd"), source="test") is None
     )
     assert appx_candidate(name="Store", app_user_model_id="bad id", source="test") is None
+
+
+def test_start_menu_filters_non_app_shortcuts_and_repairs_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    windows = tmp_path / "Windows"
+    system_tool = windows / "System32" / "control.exe"
+    system_tool.parent.mkdir(parents=True)
+    system_tool.touch()
+    uninstall = tmp_path / "Programs" / "uninstall_complete.exe"
+    uninstall.parent.mkdir()
+    uninstall.touch()
+    app = tmp_path / "Programs" / "Weixin.exe"
+    app.touch()
+    monkeypatch.setenv("WINDIR", str(windows))
+
+    assert not _is_user_facing_shortcut({"name": "Administrative Tools", "target": system_tool})
+    assert not _is_user_facing_shortcut({"name": "WeGame卸载", "target": uninstall})
+    assert _is_user_facing_shortcut({"name": "微信", "target": app})
+    assert (
+        _best_name(
+            {"name": "微��", "productName": "微信", "fileDescription": "Weixin"},
+            "Weixin",
+        )
+        == "微信"
+    )
 
 
 def test_duplicate_candidates_merge_and_known_app_matches(tmp_path: Path) -> None:
@@ -102,7 +130,8 @@ def test_catalog_requires_rescan_before_approval_and_never_auto_configures(
     approved = catalog.approve(candidate.discovery_id)
     assert approved["id"] == "steam"
     assert approved["launch"]["args"] == ["steam://open/bigpicture"]
-    assert (tmp_path / "icons" / "default.svg").exists()
+    assert approved["icon"] == "steam.png"
+    assert (tmp_path / "icons" / "steam.png").exists()
 
 
 def test_rescan_marks_missing_without_overwriting_user_fields(catalog_setup) -> None:
@@ -125,15 +154,54 @@ def test_rescan_marks_missing_without_overwriting_user_fields(catalog_setup) -> 
     assert app["available"] is False
 
 
+def test_rescan_replaces_existing_metadata_with_discovered_metadata(catalog_setup) -> None:
+    tmp_path, store, default_icon = catalog_setup
+    executable = tmp_path / "weixin.exe"
+    executable.touch()
+    source_icon = tmp_path / "weixin-source.png"
+    Image.new("RGBA", (32, 32), (27, 198, 95, 255)).save(source_icon)
+    config = store.get()
+    config["apps"].append(
+        {
+            "id": "weixin",
+            "name": "My old name",
+            "enabled": True,
+            "available": True,
+            "icon": "custom.png",
+            "launch": {"type": "program", "path": str(executable), "args": []},
+        }
+    )
+    store.write(config)
+    candidate = program_candidate(
+        name="微信", executable=str(executable), source="start-menu", icon=str(source_icon)
+    )
+    catalog = ApplicationCatalog(store, ApplicationDiscovery([Provider([candidate])]), default_icon)
+
+    catalog.rescan()
+
+    app = store.get()["apps"][0]
+    assert app["name"] == "微信"
+    assert app["icon"] == "weixin.png"
+    assert (tmp_path / "icons" / "weixin.png").is_file()
+
+
 def test_manual_catalog_validates_programs_and_websites(catalog_setup) -> None:
     tmp_path, store, default_icon = catalog_setup
     catalog = ApplicationCatalog(store, ApplicationDiscovery([]), default_icon)
     executable = tmp_path / "manual.exe"
     executable.touch()
+    website_icon = tmp_path / "icons" / "example.png"
+    catalog.icons.materialize_website = lambda _url, destination: (
+        destination.parent.mkdir(parents=True, exist_ok=True),
+        Image.new("RGBA", (32, 32), (30, 120, 240, 255)).save(destination),
+        True,
+    )[-1]
     program = catalog.add_program("Manual", str(executable), ["--value", "with spaces"])
     website = catalog.add_website("Example", "edge", "https://example.com", fullscreen=True)
     assert program["launch"]["args"] == ["--value", "with spaces"]
     assert website["launch"]["fullscreen"] is True
+    assert website["icon"] == "example.png"
+    assert website_icon.is_file()
     with pytest.raises(ValueError, match="existing absolute"):
         catalog.add_program("Bad", "cmd.exe")
     with pytest.raises(ValueError, match="http or https"):

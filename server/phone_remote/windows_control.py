@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import ctypes
 import subprocess
 import sys
@@ -9,6 +10,7 @@ from ctypes import wintypes
 from typing import Any, Protocol
 
 from .app_launcher import AppLauncher
+from .subprocess_utils import hidden_window_kwargs
 
 MAX_TEXT_LENGTH = 2000
 MAX_MOUSE_MOVE = 120.0
@@ -149,12 +151,34 @@ class WindowsBackend:
 
     def power(self, action: str) -> None:
         commands = {
-            "sleep": ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+            "sleep": _windows_sleep_command(),
             "hibernate": ["shutdown.exe", "/h"],
             "restart": ["shutdown.exe", "/r", "/t", "0"],
             "shutdown": ["shutdown.exe", "/s", "/t", "0"],
         }
-        subprocess.Popen(commands[action], close_fds=True, shell=False)
+        subprocess.Popen(
+            commands[action],
+            close_fds=True,
+            shell=False,
+            **hidden_window_kwargs(),
+        )
+
+
+def _windows_sleep_command() -> list[str]:
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "$ok=[System.Windows.Forms.Application]::SetSuspendState("
+        "[System.Windows.Forms.PowerState]::Suspend,$false,$false);"
+        "if(-not $ok){exit 1}"
+    )
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    return [
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        encoded,
+    ]
 
 
 class ControlService:

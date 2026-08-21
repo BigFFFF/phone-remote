@@ -6,19 +6,22 @@ typedef PointerMoveErrorHandler = void Function(Object error);
 class PointerMoveDispatcher {
   PointerMoveDispatcher({
     required PointerMoveSender send,
-    this.interval = const Duration(milliseconds: 33),
+    this.interval = const Duration(milliseconds: 16),
+    this.maxConcurrentSends = 3,
     PointerMoveErrorHandler? onError,
-  })  : _send = send,
+  })  : assert(maxConcurrentSends > 0),
+        _send = send,
         _onError = onError;
 
   final PointerMoveSender _send;
   final PointerMoveErrorHandler? _onError;
   final Duration interval;
+  final int maxConcurrentSends;
 
   Timer? _timer;
   double _pendingDx = 0;
   double _pendingDy = 0;
-  bool _sending = false;
+  int _inFlight = 0;
   bool _disposed = false;
 
   void add(double dx, double dy) {
@@ -31,17 +34,17 @@ class PointerMoveDispatcher {
   }
 
   void _schedule() {
-    if (_disposed || _sending || _timer != null) {
+    if (_disposed || _timer != null || _inFlight >= maxConcurrentSends) {
       return;
     }
     _timer = Timer(interval, () {
       _timer = null;
-      unawaited(_flush());
+      _flush();
     });
   }
 
-  Future<void> _flush() async {
-    if (_disposed || _sending) {
+  void _flush() {
+    if (_disposed || _inFlight >= maxConcurrentSends) {
       return;
     }
     final dx = _pendingDx;
@@ -51,13 +54,19 @@ class PointerMoveDispatcher {
     if (dx == 0 && dy == 0) {
       return;
     }
-    _sending = true;
+    _inFlight += 1;
+    unawaited(_sendBatch(dx, dy));
+  }
+
+  Future<void> _sendBatch(double dx, double dy) async {
     try {
       await _send(dx, dy);
     } catch (error) {
-      _onError?.call(error);
+      if (!_disposed) {
+        _onError?.call(error);
+      }
     } finally {
-      _sending = false;
+      _inFlight -= 1;
       if (_pendingDx != 0 || _pendingDy != 0) {
         _schedule();
       }

@@ -1,43 +1,39 @@
 # Phone Remote
 
-**Phone Remote — Cross-platform remote control for Windows PCs**
+Phone Remote 是一个在局域网内控制 Windows PC 的项目，包含 Windows Companion、原生
+Flutter 手机端和浏览器备用遥控器。
 
-Phone Remote 是一个面向用户自有 Windows PC 的可信局域网遥控系统。当前仓库包含
-Windows/Python Companion、HTTPS API、Windows 管理界面、Web Fallback Client，以及
-原生 Flutter Android/iOS Client。
+## 下载正式版
 
-## 当前功能
+- [Windows 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.1.0.exe)
+- [Android 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.1.0-android.apk)
+- [版本说明与校验文件](https://github.com/BigFFFF/phone-remote/releases/latest)
 
-- 长期 Server Identity、自签名 TLS 证书和异常 Identity 变化保护
-- 6 位一次性安全配对码、5 分钟有效期、尝试次数及请求速率限制
-- 每台客户端独立 256-bit Credential、哈希存储、独立撤销和 Revoke All
-- API v1、D-pad、Touchpad、Unicode Keyboard、Media 和 Power Control
-- 仅允许按配置 ID 启动应用，不接受远程 EXE、URL、Shell 或命令行
-- Start Menu、Registry、App Paths、MSIX 应用发现，用户批准后才进入 Catalog
-- mDNS/DNS-SD `_phone-remote._tcp.local.` 局域网发现
-- 托盘入口、仅本机管理页、配对设备和应用 Catalog 管理
-- Web Fallback Client 的 Pairing、Authentication 和 Server Identity 检查
-- Flutter 原生 Onboarding、mDNS/手工地址发现、安全配对、多 PC 与 Favorite
-- Flutter Touchpad-first Remote、D-pad、Unicode Keyboard、Media、Apps 和 Power UI
-- Android Wake on LAN、自动唤醒重连、iOS 能力降级和显式离线 Demo Mode
-- Rotating Log、Private/LocalSubnet 防火墙规则、Public Network 运行时阻断
-- PyInstaller、Inno Setup 安装器工程、Server/Mobile GitHub Actions CI
+Windows 与 Android 端需要安装在同一可信局域网内。首次连接请按 Windows 托盘程序显示的
+配对码完成配对。
 
-## 仓库结构
+## 功能
+
+- 一次配对、长期信任，多手机与多电脑独立管理
+- Touchpad、D-pad、键盘、媒体、应用启动和电源控制
+- mDNS 自动发现与手工地址连接
+- Android Wake on LAN；iOS 在能力不可用时安全降级
+- 原生 App 使用固定 Server Identity 的 HTTPS
+- Web Remote 供可信私有局域网中的普通浏览器使用
+
+## 目录
 
 ```text
-server/                 Python 3.12 Windows Companion、测试和 Web Client
-mobile/                 Flutter 3.24.5 Android/iOS Client 与测试
-protocol/openapi.yaml   API v1 正式协议边界
-packaging/windows/      PyInstaller 与 Inno Setup 工程
-docs/                   架构、安全、开发、安装、隐私和发布文档
-.github/workflows/      Server CI 与 Mobile CI
-config.example.json     version=1 配置兼容性样例
+server/                 Windows Companion、管理页和 Web Remote
+mobile/                 Flutter Android/iOS App
+protocol/openapi.yaml   API v1 的唯一机器可读契约
+packaging/windows/      Windows 打包与安装器
+docs/                   设计、开发、安全和发布说明
 ```
 
-## 从源码运行
+## 从源码运行 Companion
 
-要求 Windows 11 和 Python 3.12.x：
+要求 Windows 11 和 Python 3.12：
 
 ```powershell
 py -3.12 -m venv .venv
@@ -45,38 +41,22 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m phone_remote
 ```
 
-首次启动会在 `%LOCALAPPDATA%\PhoneRemote` 创建配置、长期身份、TLS 证书、客户端状态
-和日志。源代码运行不会修改防火墙；安装器才负责最小权限规则。
-
-托盘菜单可打开管理页和 Web Remote。首次使用 Web Remote 时请求配对码，然后在
-Windows Companion 通知中读取并输入。HTTPS 使用本机生成的证书，浏览器首次打开可能
-要求用户确认本地证书。
-
-无托盘开发模式：
+数据默认保存在 `%LOCALAPPDATA%\PhoneRemote`。托盘菜单可打开管理页、显示配对码和复制
+Web Remote 地址。无托盘开发模式：
 
 ```powershell
 .\.venv\Scripts\python.exe -m phone_remote --no-tray --print-pair-code
 ```
 
-## 验证与构建
+## 开发入口
 
-```powershell
-Set-Location server
-..\.venv\Scripts\ruff.exe format --check .
-..\.venv\Scripts\ruff.exe check .
-..\.venv\Scripts\python.exe -m pytest
-Set-Location ..
-.\packaging\windows\build.ps1
-.\packaging\windows\build.ps1 -Installer
-```
+- [开发与测试](docs/DEVELOPMENT.md)
+- [架构](docs/ARCHITECTURE.md)
+- [协议概览](docs/PROTOCOL.md)
+- [安全边界](docs/SECURITY.md)
+- [Windows 安装](docs/WINDOWS_INSTALL.md)
+- [Web Remote 使用说明](docs/WEB_REMOTE.md)
+- [发布状态](docs/RELEASE_GATE.md)
 
-完整开发、协议、安全和安装说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、
-[docs/PROTOCOL.md](docs/PROTOCOL.md)、[docs/SECURITY.md](docs/SECURITY.md) 和
-[docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)。移动端工具链、国内镜像和真实 HTTPS
-联调说明见 [mobile/README.md](mobile/README.md)。
-
-## 安全边界
-
-本产品仅用于可信 Private LAN。不要做路由器端口映射、不要开放 Public Profile，也不要
-把 Credential、`state.json`、Identity Key 或 TLS Key 提交到 Git。服务不采集键盘内容，
-不上传遥控历史，不包含云账号、广告、Analytics 或第三方遥测。
+本项目只面向局域网，不应通过端口映射、公共防火墙规则或云隧道暴露到互联网。Web
+Remote 使用未加密 HTTP，仅适用于可信私有网络。

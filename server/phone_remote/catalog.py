@@ -6,10 +6,11 @@ import shutil
 import threading
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from .app_discovery import ApplicationDiscovery, DiscoveredApp
 from .config import APP_ID_PATTERN, ConfigStore
+from .icon_materializer import IconMaterializer
 
 DEFAULT_ICON = "default.svg"
 
@@ -24,12 +25,14 @@ class ApplicationCatalog:
         self.config = config
         self.discovery = discovery
         self.bundled_default_icon = bundled_default_icon
+        self.icons = IconMaterializer(config.icon_root)
         self._lock = threading.RLock()
         self._candidates: dict[str, DiscoveredApp] = {}
 
     def rescan(self) -> list[dict[str, Any]]:
         with self._lock:
             candidates = self.discovery.scan()
+            self.icons.populate_candidates(candidates)
             self._candidates = {item.discovery_id: item for item in candidates}
             self._update_availability(candidates)
             configured_identities = {
@@ -37,7 +40,7 @@ class ApplicationCatalog:
             }
             return [
                 {
-                    **item.public(),
+                    **self._public_candidate(item),
                     "configured": _launch_identity(item.launch) in configured_identities,
                 }
                 for item in candidates
@@ -45,7 +48,7 @@ class ApplicationCatalog:
 
     def candidates(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [item.public() for item in self._candidates.values()]
+            return [self._public_candidate(item) for item in self._candidates.values()]
 
     def approve(self, discovery_id: str) -> dict[str, Any]:
         with self._lock:
@@ -86,6 +89,7 @@ class ApplicationCatalog:
         return self._add_manual(
             name,
             {"type": "program", "path": str(executable.resolve()), "args": arguments},
+            icon_source=str(executable.resolve()),
         )
 
     def add_website(
@@ -100,6 +104,7 @@ class ApplicationCatalog:
         return self._add_manual(
             name,
             {"type": "browser", "browser": browser, "url": url, "fullscreen": fullscreen},
+            website_url=url,
         )
 
     def set_enabled(self, app_id: str, enabled: bool) -> dict[str, Any]:
@@ -122,7 +127,14 @@ class ApplicationCatalog:
         self.config.write(config)
         return True
 
-    def _add_manual(self, name: str, launch: dict[str, Any]) -> dict[str, Any]:
+    def _add_manual(
+        self,
+        name: str,
+        launch: dict[str, Any],
+        *,
+        icon_source: str | None = None,
+        website_url: str | None = None,
+    ) -> dict[str, Any]:
         name = " ".join(str(name).split())[:80]
         if not name:
             raise ValueError("invalid app name")
@@ -131,12 +143,18 @@ class ApplicationCatalog:
             _launch_identity(item["launch"]) == _launch_identity(launch) for item in config["apps"]
         ):
             raise ValueError("app is already configured")
+        app_id = self._unique_id(name, config)
+        icon = (
+            self._import_website_icon(website_url, app_id)
+            if website_url
+            else self._import_icon(icon_source, app_id)
+        )
         app = {
-            "id": self._unique_id(name, config),
+            "id": app_id,
             "name": name,
             "enabled": True,
             "available": True,
-            "icon": self._import_icon(None, "manual"),
+            "icon": icon,
             "launch": launch,
         }
         config["apps"].append(app)
@@ -144,14 +162,15 @@ class ApplicationCatalog:
         return app
 
     def _update_availability(self, candidates: list[DiscoveredApp]) -> None:
-        identities = {_launch_identity(item.launch) for item in candidates}
+        candidates_by_identity = {_launch_identity(item.launch): item for item in candidates}
         config = self.config.get()
         changed = False
         for app in config["apps"]:
             launch = app["launch"]
+            candidate = candidates_by_identity.get(_launch_identity(launch))
             available = True
             if launch["type"] in {"program", "appx"}:
-                available = _launch_identity(launch) in identities
+                available = candidate is not None
                 if (
                     launch["type"] == "program"
                     and Path(os.path.expandvars(launch["path"])).is_file()
@@ -160,6 +179,19 @@ class ApplicationCatalog:
             if app.get("available", True) != available:
                 app["available"] = available
                 changed = True
+            if candidate:
+                imported_icon = self._import_icon(candidate.icon, app["id"])
+                if app.get("icon") != imported_icon:
+                    app["icon"] = imported_icon
+                    changed = True
+            if candidate and app.get("name") != candidate.name:
+                app["name"] = candidate.name
+                changed = True
+            if launch["type"] == "browser" and launch.get("url"):
+                imported_icon = self._import_website_icon(launch["url"], app["id"])
+                if app.get("icon") != imported_icon:
+                    app["icon"] = imported_icon
+                    changed = True
         if changed:
             self.config.write(config)
 
@@ -178,10 +210,37 @@ class ApplicationCatalog:
                 if source.resolve() != destination.resolve():
                     shutil.copy2(source, destination)
                 return destination.name
+        destination = self.config.icon_root / f"{app_id}.png"
+        if self.icons.materialize(source_value, destination):
+            return destination.name
         destination = self.config.icon_root / DEFAULT_ICON
         if not destination.exists():
             shutil.copy2(self.bundled_default_icon, destination)
         return DEFAULT_ICON
+
+    def _import_website_icon(self, url: str, app_id: str) -> str:
+        destination = self.config.icon_root / f"{app_id}.png"
+        if destination.is_file() or self.icons.materialize_website(url, destination):
+            return destination.name
+        return self._import_icon(None, app_id)
+
+    def _public_candidate(self, candidate: DiscoveredApp) -> dict[str, Any]:
+        value = candidate.public()
+        icon_path = Path(candidate.icon) if candidate.icon else None
+        if icon_path and icon_path.is_file():
+            try:
+                is_managed = icon_path.resolve().parent == self.config.icon_root.resolve()
+            except OSError:
+                is_managed = False
+            if is_managed:
+                version = icon_path.stat().st_mtime_ns
+                value["icon"] = f"/app-icons/{quote(icon_path.name, safe='')}?v={version}"
+                return value
+        default_path = self.config.icon_root / DEFAULT_ICON
+        if not default_path.exists():
+            shutil.copy2(self.bundled_default_icon, default_path)
+        value["icon"] = f"/app-icons/{DEFAULT_ICON}?v={default_path.stat().st_mtime_ns}"
+        return value
 
     @staticmethod
     def _unique_id(value: str, config: dict[str, Any]) -> str:

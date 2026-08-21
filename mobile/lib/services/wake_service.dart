@@ -43,15 +43,24 @@ typedef WakeDatagramSender = Future<void> Function(
   List<InternetAddress> targets,
   int port,
 );
+typedef WakeDelay = Future<void> Function(Duration duration);
 
 class UdpWakeService implements WakeService {
   UdpWakeService({
     WakeDatagramSender? sender,
     this.port = 9,
-  }) : _sender = sender ?? _sendDatagram;
+    this.repetitions = 3,
+    this.repetitionInterval = const Duration(milliseconds: 80),
+    WakeDelay? delay,
+  })  : assert(repetitions > 0),
+        _sender = sender ?? _sendDatagram,
+        _delay = delay ?? Future<void>.delayed;
 
   final WakeDatagramSender _sender;
+  final WakeDelay _delay;
   final int port;
+  final int repetitions;
+  final Duration repetitionInterval;
 
   @override
   Future<WakeCapability> capability(Device device) async {
@@ -78,7 +87,13 @@ class UdpWakeService implements WakeService {
     if (targets.every((target) => target.address != limited.address)) {
       targets.add(limited);
     }
-    await _sender(buildMagicPacket(mac), targets, port);
+    final packet = buildMagicPacket(mac);
+    for (var repetition = 0; repetition < repetitions; repetition += 1) {
+      await _sender(packet, targets, port);
+      if (repetition + 1 < repetitions) {
+        await _delay(repetitionInterval);
+      }
+    }
   }
 
   static Uint8List buildMagicPacket(List<int> mac) {

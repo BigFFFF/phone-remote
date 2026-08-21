@@ -1,3 +1,4 @@
+import base64
 import copy
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ import pytest
 
 from phone_remote.app_launcher import AppLauncher
 from phone_remote.config import ConfigStore, migrate_config, validate_config
-from phone_remote.windows_control import MAX_TEXT_LENGTH, ControlService
+from phone_remote.windows_control import MAX_TEXT_LENGTH, ControlService, _windows_sleep_command
 
 
 @pytest.fixture()
@@ -164,6 +165,15 @@ def test_control_validation_and_mouse_clamps(store: ConfigStore) -> None:
         control.mouse({"type": "move", "dx": "NaN", "dy": 0})
 
 
+def test_sleep_command_requests_suspend_without_disabling_wake_events() -> None:
+    command = _windows_sleep_command()
+    script = base64.b64decode(command[-1]).decode("utf-16-le")
+
+    assert command[:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
+    assert "PowerState]::Suspend,$false,$false" in script
+    assert "SetSuspendState" in script
+
+
 def test_process_launch_uses_argument_array_without_shell(store: ConfigStore) -> None:
     calls = []
     launcher = AppLauncher(store, lambda *args, **kwargs: calls.append((args, kwargs)))
@@ -172,6 +182,36 @@ def test_process_launch_uses_argument_array_without_shell(store: ConfigStore) ->
     assert args[0][1:] == ["--safe", "value with spaces"]
     assert kwargs["shell"] is False
     assert kwargs["close_fds"] is True
+
+
+def test_elevation_required_falls_back_to_uac_shell_launch(
+    store: ConfigStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+    monkeypatch.setattr("phone_remote.app_launcher.sys.platform", "win32")
+
+    def requires_elevation(*_args, **_kwargs):
+        error = OSError("elevation required")
+        error.winerror = 740
+        raise error
+
+    launcher = AppLauncher(
+        store,
+        requires_elevation,
+        elevation_launcher=lambda args, cwd: calls.append((args, cwd)),
+    )
+    launcher.launch("player")
+
+    assert calls == [
+        (
+            [
+                str(Path(store.get()["apps"][1]["launch"]["path"])),
+                "--safe",
+                "value with spaces",
+            ],
+            str(Path(store.get()["apps"][1]["launch"]["path"]).parent),
+        )
+    ]
 
 
 def test_public_apps_report_missing_program(store: ConfigStore) -> None:

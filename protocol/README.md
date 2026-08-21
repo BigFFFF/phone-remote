@@ -1,16 +1,8 @@
 # Phone Remote protocol
 
-`openapi.yaml` is the source of truth for API v1. Server and mobile product versions may
-evolve independently while they both support API version `1`.
+[`openapi.yaml`](openapi.yaml) is the API v1 source of truth. Native clients use identity-pinned
+HTTPS; Web Remote uses plaintext HTTP only on a trusted Private LAN. Pairing routes are public and
+control routes require a per-client Bearer Credential.
 
-The protocol is LAN-only and HTTPS-only in production. `/info` and the two pairing routes
-are public; all control routes require the independent Bearer credential issued to one
-client during pairing. A client must retain the `serverId` and `identityFingerprint`, reject
-an unexpected identity change, and store its credential in platform secure storage.
-
-The server never accepts an executable path, URL, command line, or shell command from a
-remote client. Application launch requests contain only a configured application ID.
-
-The management API is deliberately excluded from this contract. It is loopback-only,
-protected by an ephemeral process token, and used by Windows Companion rather than mobile
-clients.
+Remote app launches accept only locally approved application IDs. The loopback-only management API
+is outside this contract.

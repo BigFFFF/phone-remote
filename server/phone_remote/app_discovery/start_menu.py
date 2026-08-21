@@ -1,14 +1,44 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
-import subprocess
+import re
 import sys
 from pathlib import Path
-from typing import Any
 
 from .models import DiscoveredApp, program_candidate
+from .powershell import run_powershell_json
+
+_BLOCKED_SHORTCUT_NAME = re.compile(
+    r"^(?:"
+    r"uninst(?:all|aller)?\b|remove\b|repair\b|modify\b|"
+    r"check\s+for\s+updates?\b|updates?\b|"
+    r".*\binstall\s+manager\b|.*\blanguage\s+preferences\b|"
+    r"documentation\b|readme\b|release\s+notes?\b|online\s+help\b"
+    r")",
+    re.IGNORECASE,
+)
+_BLOCKED_CJK_NAME_PARTS = ("卸载", "移除", "修复", "更新程序", "帮助文档", "说明文档", "发行说明")
+_BLOCKED_EXECUTABLE = re.compile(
+    r"^(?:"
+    r"unins\d*.*|uninst(?:all|aller)?.*|setup|installer|install|.*installmanager|"
+    r"updater?|updateassistant|maintenancetool|repair|remove|modify|"
+    r"crashreport(?:er)?|bugreport(?:tool)?|diagnostic(?:s)?|"
+    r"vc_redist(?:\..+)?|aacsetup|onedrivesetup|officeclicktorun|msedgewebview2"
+    r")$",
+    re.IGNORECASE,
+)
+_BLOCKED_LAUNCHERS = {
+    "cmd.exe",
+    "control.exe",
+    "cscript.exe",
+    "msiexec.exe",
+    "powershell.exe",
+    "powershell_ise.exe",
+    "regedit.exe",
+    "rundll32.exe",
+    "wscript.exe",
+}
 
 
 class StartMenuProvider:
@@ -39,48 +69,50 @@ $result = foreach ($root in $roots) {
     -ErrorAction SilentlyContinue | ForEach-Object {
     try {
       $shortcut = $shell.CreateShortcut($_.FullName)
+      $productName = ''
+      $fileDescription = ''
+      if ($shortcut.TargetPath -and (Test-Path -LiteralPath $shortcut.TargetPath -PathType Leaf)) {
+        try {
+          $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($shortcut.TargetPath)
+          $productName = $version.ProductName
+          $fileDescription = $version.FileDescription
+        } catch {}
+      }
       [pscustomobject]@{
         name = $_.BaseName
+        shortcut = $_.FullName
         target = $shortcut.TargetPath
         arguments = $shortcut.Arguments
         workingDirectory = $shortcut.WorkingDirectory
         icon = $shortcut.IconLocation
+        productName = $productName
+        fileDescription = $fileDescription
       }
     } catch {}
   }
 }
 $result | ConvertTo-Json -Compress
 """
-        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-        environment = os.environ.copy()
-        environment["PHONE_REMOTE_SHORTCUT_ROOTS"] = json.dumps(roots)
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-            env=environment,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-            check=False,
-            shell=False,
-        )
-        if result.returncode or not result.stdout.strip():
-            return []
         try:
-            raw: Any = json.loads(result.stdout)
-        except json.JSONDecodeError:
+            raw = run_powershell_json(
+                script,
+                environment={"PHONE_REMOTE_SHORTCUT_ROOTS": json.dumps(roots)},
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
             return []
         entries = raw if isinstance(raw, list) else [raw]
         candidates = []
         for item in entries:
             if not isinstance(item, dict):
                 continue
+            if not _is_user_facing_shortcut(item):
+                continue
+            target = str(item.get("target", ""))
             candidate = program_candidate(
-                name=str(item.get("name", "")),
-                executable=str(item.get("target", "")),
+                name=_best_name(item, Path(target).stem),
+                executable=target,
                 arguments=_split_arguments(str(item.get("arguments", ""))),
-                icon=_icon_path(str(item.get("icon", ""))),
+                icon=_icon_source(str(item.get("icon", ""))) or target,
                 source=self.source,
                 confidence=90,
             )
@@ -109,6 +141,59 @@ def _split_arguments(value: str) -> list[str]:
     return value.split()[:32]
 
 
-def _icon_path(value: str) -> str | None:
-    path = value.rsplit(",", 1)[0].strip().strip('"')
-    return path if Path(os.path.expandvars(path)).is_file() else None
+def _is_user_facing_shortcut(item: dict[str, object]) -> bool:
+    name = " ".join(str(item.get("name", "")).split()).strip()
+    target_value = os.path.expandvars(str(item.get("target", "")).strip().strip('"'))
+    target = Path(target_value)
+    if not name or not target.is_absolute() or target.suffix.lower() != ".exe":
+        return False
+
+    target_name = target.name.casefold()
+    target_stem = target.stem
+    path_text = str(target).casefold()
+    windows_root = Path(os.environ.get("WINDIR", r"C:\Windows"))
+    try:
+        if target.resolve().is_relative_to(windows_root.resolve()):
+            return False
+    except OSError:
+        return False
+    if "\\windowsapps\\" in path_text or "\\package cache\\" in path_text:
+        return False
+    if target_name in _BLOCKED_LAUNCHERS or _BLOCKED_EXECUTABLE.fullmatch(target_stem):
+        return False
+    if _BLOCKED_SHORTCUT_NAME.search(name):
+        return False
+    if any(part in name for part in _BLOCKED_CJK_NAME_PARTS):
+        return False
+    return target.is_file()
+
+
+def _best_name(item: dict[str, object], fallback: str) -> str:
+    values = (
+        str(item.get("name", "")),
+        str(item.get("productName", "")),
+        str(item.get("fileDescription", "")),
+        fallback,
+    )
+    return next((value for value in values if _readable_name(value)), fallback)
+
+
+def _readable_name(value: str) -> bool:
+    cleaned = " ".join(value.split()).strip()
+    return (
+        bool(cleaned)
+        and "\ufffd" not in cleaned
+        and all(character.isprintable() for character in cleaned)
+    )
+
+
+def _icon_source(value: str) -> str | None:
+    raw = os.path.expandvars(value.strip())
+    match = re.fullmatch(r'"?(.*?)"?\s*(?:,\s*(-?\d+))?', raw)
+    if not match:
+        return None
+    path = Path(match.group(1))
+    if not path.is_file():
+        return None
+    index = match.group(2)
+    return f"{path},{index}" if index is not None else str(path)

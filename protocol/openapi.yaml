@@ -8,6 +8,11 @@ servers:
     variables:
       host:
         default: 127.0.0.1
+  - url: http://{host}:8766/api/v1
+    description: Private-LAN plaintext endpoint used only by browser Web Remote.
+    variables:
+      host:
+        default: 127.0.0.1
 security:
   - bearerCredential: []
 paths:
@@ -219,6 +224,7 @@ components:
           description: Active physical adapters that the paired client may use for Wake on LAN.
           items: { $ref: "#/components/schemas/WakeTarget" }
         port: { type: integer, minimum: 1, maximum: 65535 }
+        webPort: { type: [integer, "null"], minimum: 1, maximum: 65535 }
         configOk: { type: boolean }
         configError: { type: [string, "null"] }
     WakeTarget:

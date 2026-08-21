@@ -49,6 +49,9 @@ class FakeNetwork:
     def __init__(self, public_only=False):
         self.is_public_only = public_only
 
+    def addresses(self):
+        return ["192.168.1.10"]
+
     def profiles(self):
         return []
 
@@ -57,6 +60,12 @@ class FakeNetwork:
 
     def firewall_status(self):
         return {"api": True, "discovery": True}
+
+    def start_with_windows(self):
+        return False
+
+    def wol_diagnostics(self):
+        return []
 
     def wake_targets(self):
         return [
@@ -208,6 +217,7 @@ def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) 
     credential = paired["credential"]
     status, server_status, _ = api.request("GET", "/api/v1/status", credential=credential)
     assert status == 200
+    assert server_status["addresses"] == ["192.168.1.10"]
     assert server_status["wakeTargets"][0]["mac"] == "00:11:22:33:44:55"
     status, _, _ = api.request("POST", "/api/v1/action", {"action": "up"}, credential=credential)
     assert status == 200
@@ -299,6 +309,34 @@ def test_admin_api_is_token_protected(api: RunningApi) -> None:
     status, data, _ = api.request("GET", "/api/v1/admin/pair", admin="admin-secret")
     assert status == 200 and data["code"] == "123456"
     assert api.request("GET", "/api/v1/admin/overview", admin="admin-secret")[0] == 200
+
+
+def test_private_lan_web_listener_serves_remote_and_keeps_management_loopback_only(
+    api: RunningApi,
+) -> None:
+    server = PhoneRemoteServer(("127.0.0.1", 0), api.context, private_lan_only=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    web = RunningApi(server, thread, api.context, api.backend)
+
+    def static_status(path: str) -> int:
+        connection = http.client.HTTPConnection("127.0.0.1", web.port, timeout=5)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+        return response.status
+
+    try:
+        assert static_status("/") == 200
+        assert static_status("/manage") == 200
+        assert web.request("GET", "/api/v1/admin/overview", admin="admin-secret")[0] == 200
+        paired = web.pair("LAN Browser")
+        assert web.request("GET", "/api/v1/status", credential=paired["credential"])[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_legacy_routes_are_authenticated_during_migration(api: RunningApi) -> None:

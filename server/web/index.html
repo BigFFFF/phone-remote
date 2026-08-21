@@ -462,9 +462,13 @@
     }
     async function apiFetch(path, options = {}) {
       const headers = { ...(options.headers || {}) };
-      if (credential) headers.Authorization = `Bearer ${credential}`;
+      const requestCredential = credential;
+      if (requestCredential) headers.Authorization = `Bearer ${requestCredential}`;
       const response = await fetch(path, { ...options, headers });
       if (response.status === 401 && !path.includes('/pair/')) {
+        // Ignore a response sent with an older credential. It may finish while
+        // a new pairing session is open or after the replacement credential is saved.
+        if (requestCredential !== credential) return response;
         credential = '';
         localStorage.removeItem('phone-remote-credential');
         showPairing('配对凭据已失效，请重新配对。');
@@ -479,7 +483,7 @@
         pairingSessionId = data.sessionId;
         pairHelp.textContent = `请在 ${data.expiresIn} 秒内输入 Windows Companion 显示的 6 位验证码。`;
         completePairPane.classList.remove('hidden');
-        pairCode.focus();
+        pairCode.focus({ preventScroll: true });
       } catch (error) { showToast(error.message || '配对请求失败', 2200); }
     }
     async function completePairing() {
@@ -494,6 +498,7 @@
         localStorage.setItem('phone-remote-credential', credential);
         localStorage.setItem('phone-remote-server-id', pairedServerId);
         localStorage.setItem('phone-remote-identity', identityFingerprint);
+        pairingSessionId = '';
         pairCode.value = ''; pairDialog.close(); showToast('配对成功'); refresh(); refreshApps();
       } catch (error) { showToast(error.message || '配对失败', 2200); }
     }
@@ -507,7 +512,10 @@
           showPairing('检测到 Server Identity 变化，已阻止连接。请确认后重新配对。');
           return false;
         }
-        if (!credential) { showPairing(); return false; }
+        if (!credential) {
+          if (!pairingSessionId) showPairing();
+          return false;
+        }
         return true;
       } catch { setConnection(false); return false; }
     }
@@ -578,6 +586,7 @@
       }
     }
     async function refresh() {
+      if (!credential) return;
       try {
         const response = await apiFetch('/api/v1/status', { cache: 'no-store' });
         const data = await response.json();
@@ -620,6 +629,7 @@
       appGrid.append(fragment);
     }
     async function refreshApps() {
+      if (!credential) return;
       try {
         const response = await apiFetch('/api/v1/apps', { cache: 'no-store' });
         const data = await response.json();

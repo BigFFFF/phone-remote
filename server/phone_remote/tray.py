@@ -9,7 +9,8 @@ import pystray
 from PIL import Image, ImageDraw
 
 from .api import ApiContext
-from .network import set_start_with_windows, start_with_windows_enabled
+from .network import is_private_lan, set_start_with_windows, start_with_windows_enabled
+from .subprocess_utils import hidden_window_kwargs
 
 
 class PairingDisplay:
@@ -39,7 +40,8 @@ class TrayApplication:
         self.pairing_display = pairing_display
         self.stop_callback = stop
         self.startup_command = startup_command
-        self.base_url = f"https://127.0.0.1:{context.port}"
+        self.remote_url = f"http://127.0.0.1:{context.web_port or context.port}"
+        self.base_url = self.remote_url
         self.icon = pystray.Icon(
             "Phone Remote",
             _create_icon(),
@@ -70,7 +72,7 @@ class TrayApplication:
         self.icon.run()
 
     def open_remote(self, *_args) -> None:
-        webbrowser.open(self.base_url)
+        webbrowser.open(self.remote_url)
 
     def open_management(self, *_args) -> None:
         webbrowser.open(f"{self.base_url}/manage/#{self.context.admin_token}")
@@ -85,11 +87,18 @@ class TrayApplication:
     def copy_address(self, *_args) -> None:
         from .network import local_ipv4_addresses
 
-        host = next(iter(local_ipv4_addresses()), "127.0.0.1")
-        value = f"https://{host}:{self.context.port}"
+        addresses = local_ipv4_addresses()
+        host = next((value for value in addresses if is_private_lan(value)), "127.0.0.1")
+        value = f"http://{host}:{self.context.web_port or self.context.port}"
         if sys.platform == "win32":
             subprocess.run(
-                ["clip.exe"], input=value, text=True, timeout=5, check=False, shell=False
+                ["clip.exe"],
+                input=value,
+                text=True,
+                timeout=5,
+                check=False,
+                shell=False,
+                **hidden_window_kwargs(),
             )
         self.icon.notify(value, "Phone Remote address copied")
 

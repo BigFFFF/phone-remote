@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../models/api_models.dart';
 import '../models/server_endpoint.dart';
@@ -119,7 +120,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         // only after its advertised fingerprints match this exact certificate.
         return true;
       }
-      final actual = _verifier.inspect(certificate.der).identity;
+      final actual = _fingerprintsFor(certificate).identity;
       return _sameFingerprint(expected, actual);
     };
   }
@@ -131,6 +132,10 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   final Duration timeout;
   final TlsIdentityVerifier _verifier;
   late final HttpClient _httpClient;
+  String? _cachedCertificatePem;
+  CertificateFingerprints? _cachedFingerprints;
+  static const int _maximumIconBytes = 2 * 1024 * 1024;
+  static const int _iconDownloadWorkers = 4;
 
   @override
   Future<ServerInfo> getInfo() async {
@@ -213,12 +218,100 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
     if (rawApps is! List<Object?>) {
       throw const ApiException('The Windows PC returned an invalid app list.');
     }
-    return List<ConfiguredApp>.unmodifiable(rawApps.map((value) {
+    final apps = rawApps.map((value) {
       if (value is! Map<String, Object?>) {
         throw const FormatException('Configured app must be an object.');
       }
       return ConfiguredApp.fromJson(value);
-    }));
+    }).toList();
+    var nextIndex = 0;
+    Future<void> downloadNext() async {
+      while (nextIndex < apps.length) {
+        final index = nextIndex++;
+        final app = apps[index];
+        try {
+          final bytes = await _getIcon(app.icon);
+          apps[index] = app.withIconBytes(bytes);
+        } on IdentityMismatchException {
+          rethrow;
+        } on Object {
+          // A missing or malformed icon must not hide an otherwise usable app.
+        }
+      }
+    }
+
+    await Future.wait(<Future<void>>[
+      for (var worker = 0;
+          worker < _iconDownloadWorkers && worker < apps.length;
+          worker += 1)
+        downloadNext(),
+    ]);
+    return List<ConfiguredApp>.unmodifiable(apps);
+  }
+
+  Future<Uint8List> _getIcon(String value) async {
+    final path = Uri.tryParse(value);
+    if (path == null || !path.path.startsWith('/app-icons/')) {
+      throw const FormatException('App icon path is invalid.');
+    }
+    try {
+      final request =
+          await _httpClient.getUrl(endpoint.resourceUri(path)).timeout(timeout);
+      final token = credential;
+      if (token != null && token.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
+      final response = await request.close().timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          'The Windows PC did not return the app icon.',
+          statusCode: response.statusCode,
+        );
+      }
+      final certificate = response.certificate;
+      if (certificate == null) {
+        throw const ApiException(
+            'The Windows PC did not provide a TLS certificate.');
+      }
+      final fingerprints = _fingerprintsFor(certificate);
+      final expected = trustedIdentity;
+      if (expected != null &&
+          !_sameFingerprint(expected, fingerprints.identity)) {
+        throw IdentityMismatchException(
+          expected: expected,
+          actual: fingerprints.identity,
+        );
+      }
+      final builder = BytesBuilder(copy: false);
+      var length = 0;
+      await for (final chunk in response.timeout(timeout)) {
+        length += chunk.length;
+        if (length > _maximumIconBytes) {
+          throw const ApiException('The app icon is too large.');
+        }
+        builder.add(chunk);
+      }
+      final bytes = builder.takeBytes();
+      if (bytes.isEmpty) {
+        throw const ApiException('The app icon is empty.');
+      }
+      return bytes;
+    } on IdentityMismatchException {
+      rethrow;
+    } on ApiException {
+      rethrow;
+    } on HandshakeException catch (_) {
+      final expected = trustedIdentity;
+      if (expected != null) {
+        throw IdentityMismatchException(expected: expected);
+      }
+      throw const ApiException(
+          'Unable to establish a secure connection to the Windows PC.');
+    } on TimeoutException catch (_) {
+      throw const ApiException('The app icon request timed out.');
+    } on SocketException catch (_) {
+      throw const ApiException('Unable to download the app icon.');
+    }
   }
 
   @override
@@ -313,7 +406,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         throw const ApiException(
             'The Windows PC did not provide a TLS certificate.');
       }
-      final fingerprints = _verifier.inspect(certificate.der);
+      final fingerprints = _fingerprintsFor(certificate);
       final text = await utf8.decoder.bind(response).join().timeout(timeout);
       final decoded =
           text.isEmpty ? const <String, Object?>{} : jsonDecode(text);
@@ -354,6 +447,18 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
 
   @override
   void close() => _httpClient.close(force: true);
+
+  CertificateFingerprints _fingerprintsFor(X509Certificate certificate) {
+    final pem = certificate.pem;
+    final cached = _cachedFingerprints;
+    if (_cachedCertificatePem == pem && cached != null) {
+      return cached;
+    }
+    final fingerprints = _verifier.inspect(certificate.der);
+    _cachedCertificatePem = pem;
+    _cachedFingerprints = fingerprints;
+    return fingerprints;
+  }
 
   void _verifyServer(String serverId, int apiVersion) {
     if (apiVersion != 1) {

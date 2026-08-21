@@ -1,52 +1,32 @@
 # Protocol
 
-The authoritative machine-readable contract is `protocol/openapi.yaml`.
+`protocol/openapi.yaml` is the authoritative API v1 contract.
 
-## Discovery and compatibility
+## Endpoints
 
-Windows Companion advertises `_phone-remote._tcp.local.` with Server ID, display name, server
-version, API version, port, TLS flag, and a short identity hint. Automatic discovery is optional;
-clients must retain a manual host/IP path. `GET /api/v1/info` is public and returns the full
-identity and certificate fingerprints.
+| Client | Transport | Default port |
+| --- | --- | --- |
+| Native mobile app | HTTPS with pinned Server Identity | 8765 |
+| Browser Web Remote | Plain HTTP on trusted Private LAN only | 8766 |
 
-A client supporting API v1 may connect to any server product version that reports
-`apiVersion: 1`. An unsupported API version must produce an update message rather than a crash.
+Companion advertises `_phone-remote._tcp.local.`. Manual host/IP entry remains available.
 
-## Pairing
+## Pairing and authentication
 
-The public `/info` field `pairing` reports whether a session is already active. `false` is the
-normal idle state and does not mean pairing is unavailable; a client starts the flow by posting to
-`/pair/request`.
+1. The client requests a pairing session.
+2. Companion displays a one-time six-digit code.
+3. The client completes pairing with the code and receives its client ID and Credential once.
+4. Authenticated routes use `Authorization: Bearer <credential>`.
 
-1. Client calls `POST /api/v1/pair/request`.
-2. Companion creates one cryptographically random six-digit code and displays it on Windows.
-3. Client submits the session ID, code, device name, and platform to `/pair/complete`.
-4. Server returns a unique client ID and a 256-bit Credential exactly once.
-5. Client stores Server ID, identity fingerprint, and Credential in secure storage.
+Pairing sessions expire after five minutes and are rate/attempt limited. Each client has an
+independently revocable Credential. Native clients retain the Server ID and identity fingerprint
+and block unexpected identity changes.
 
-The session lasts five minutes, is single-use, and has both wrong-attempt and request-rate
-limits. Starting another session invalidates the prior session.
+## Control boundary
 
-## Authentication and trust
+Remote requests contain only enumerated actions, bounded mouse values, text up to 2,000 Unicode
+characters, a power action, or an approved application ID. Executable paths, URLs, shell commands,
+and arbitrary command lines are not accepted. Request bodies are limited to 16 KiB.
 
-Authenticated routes use `Authorization: Bearer <credential>`. Each Credential belongs to one
-client. Removing one client does not affect others. There is no fixed 30/90/365-day expiration;
-the relationship remains valid until explicit revocation, lost state, or identity failure.
-
-Authenticated `/status` also returns active physical-adapter Wake targets (`mac`, `address`, and
-directed `broadcast`). Mobile stores the matching target with the trusted PC, prefers the directed
-broadcast, and may use `255.255.255.255` as a fallback. This information is never exposed by the
-public `/info` route.
-
-Certificate renewal reuses the Server Identity key, so the identity fingerprint remains stable.
-A client must block an unexpected fingerprint or Server ID change and require intentional
-re-pairing. A client must never implement a global `trustAllCertificates` policy.
-
-## Control contract
-
-The client sends enumerated actions, clamped mouse values, up to 2,000 Unicode characters, a
-power enum, or a configured application ID. It cannot provide an EXE path, URL, shell command,
-PowerShell/CMD command, or arbitrary command line. Request bodies are limited to 16 KiB.
-
-Legacy `/api/*` aliases remain temporarily but require the same Credential. New clients use
-`/api/v1/*` exclusively.
+Product versions may differ while both sides report `apiVersion: 1`. New clients use `/api/v1/*`;
+legacy authenticated aliases remain for compatibility.

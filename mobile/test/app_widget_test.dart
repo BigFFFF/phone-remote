@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phone_remote/application/phone_remote_controller.dart';
@@ -9,6 +11,7 @@ import 'package:phone_remote/services/discovery_service.dart';
 import 'package:phone_remote/services/pairing_service.dart';
 import 'package:phone_remote/services/remote_session.dart';
 import 'package:phone_remote/services/wake_service.dart';
+import 'package:phone_remote/ui/remote_shell.dart';
 
 import 'support/fake_api.dart';
 import 'support/memory_storage.dart';
@@ -102,14 +105,17 @@ void main() {
     );
     await repository.savePaired(device, 'credential');
     final apiFactory = _apiFactory(
-      apps: const <ConfiguredApp>[
+      apps: <ConfiguredApp>[
         ConfiguredApp(
           id: 'steam',
           name: 'Steam',
           available: true,
-          icon: 'default',
+          icon: '/app-icons/steam.png',
+          iconBytes: base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          ),
         ),
-        ConfiguredApp(
+        const ConfiguredApp(
           id: 'missing',
           name: 'Missing App',
           available: false,
@@ -126,19 +132,85 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Online'), findsOneWidget);
-    await tester.ensureVisible(find.text('Back'));
-    await tester.tap(find.text('Back'));
+    for (final label in <String>[
+      'Back',
+      'Keyboard',
+      'Fullscreen',
+      'Volume down',
+      'Mute',
+      'Volume up',
+      'Previous',
+      'Play / Pause',
+      'Next',
+    ]) {
+      expect(find.text(label), findsNothing);
+    }
+    await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pump();
     expect(apiFactory.commands, contains('action:escape'));
 
     await tester.tap(find.text('Apps'));
     await tester.pumpAndSettle();
     expect(find.text('Steam'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('app-icon-Steam')),
+      findsOneWidget,
+    );
     expect(find.text('Missing App'), findsOneWidget);
     expect(find.text('Unavailable'), findsOneWidget);
     await tester.tap(find.text('Steam'));
     await tester.pump();
     expect(apiFactory.commands, contains('launch:steam'));
+  });
+
+  testWidgets('touchpad owns drag gestures without scrolling its page',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: RemoteShell.demo()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('remote-page')),
+        matching: find.byType(Scrollable),
+      ),
+      findsNothing,
+    );
+    await tester.drag(
+      find.byKey(const ValueKey<String>('touchpad-surface')),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('D-pad'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keyboard sheet can be dismissed from its backdrop safely',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: RemoteShell.demo()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.keyboard));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }
 

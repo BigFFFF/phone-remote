@@ -15,6 +15,9 @@
     input, select { color: inherit; background: #11181d; min-width: 180px; }
     form, .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
     .item { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #34444e; }
+    .item-main { display: flex; gap: 12px; min-width: 0; align-items: center; }
+    .item-icon { width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; border-radius: 9px; }
+    .item-text { min-width: 0; }
     .muted { color: #a9bac3; font-size: 14px; }
     #pairCode { font: 700 36px ui-monospace, monospace; letter-spacing: 7px; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -52,13 +55,15 @@
       if (!response.ok || !data.ok) throw new Error(data.error || '请求失败');
       return data;
     }
-    function item(title, detail, actions = []) {
+    function item(title, detail, actions = [], icon = '') {
       const row = document.createElement('div'); row.className = 'item';
-      const text = document.createElement('div');
+      const main = document.createElement('div'); main.className = 'item-main';
+      if (icon) { const image = document.createElement('img'); image.className = 'item-icon'; image.src = icon; image.alt = ''; image.onerror = () => image.remove(); main.append(image); }
+      const text = document.createElement('div'); text.className = 'item-text';
       const strong = document.createElement('strong'); strong.textContent = title;
       const small = document.createElement('div'); small.className = 'muted'; small.textContent = detail || '';
-      text.append(strong, small); const controls = document.createElement('div'); actions.forEach(action => controls.append(action));
-      row.append(text, controls); return row;
+      text.append(strong, small); main.append(text); const controls = document.createElement('div'); actions.forEach(action => controls.append(action));
+      row.append(main, controls); return row;
     }
     function button(label, handler, danger = false) {
       const value = document.createElement('button'); value.textContent = label; if (danger) value.className = 'danger'; value.onclick = handler; return value;
@@ -68,7 +73,9 @@
         const data = await api('/api/v1/admin/overview');
         message.textContent = '仅本机可访问 · 管理凭据不会发送到局域网客户端';
         const { server, networkProfiles, firewall, startWithWindows, wol } = data;
-        document.getElementById('overview').textContent = `${server.name} · ${server.version}\n${server.addresses.join(', ') || '无局域网地址'}:${server.port}\n网络：${networkProfiles.map(x => `${x.name} (${x.category})`).join(', ') || '未知'}\n防火墙：API=${firewall.api} Discovery=${firewall.discovery}\n开机启动：${startWithWindows}\nIdentity: ${server.identityFingerprint}\nWoL adapters: ${wol.length}`;
+        const appAddresses = server.addresses.map(x => `https://${x}:${server.port}`).join(', ') || '无局域网地址';
+        const webAddresses = server.addresses.map(x => `http://${x}:${server.webPort}`).join(', ') || '无局域网地址';
+        document.getElementById('overview').textContent = `${server.name} · ${server.version}\nApp API: ${appAddresses}\nWeb Remote: ${webAddresses}\n网络：${networkProfiles.map(x => `${x.name} (${x.category})`).join(', ') || '未知'}\n防火墙：API=${firewall.api} Discovery=${firewall.discovery}\n开机启动：${startWithWindows}\nIdentity: ${server.identityFingerprint}\nWoL adapters: ${wol.length}`;
         renderClients(data.clients); renderApps(data.apps);
       } catch (error) { message.textContent = error.message; }
     }
@@ -79,11 +86,11 @@
     }
     function renderApps(apps) {
       const root = document.getElementById('apps'); root.replaceChildren();
-      apps.forEach(app => root.append(item(app.name, `${app.id} · ${app.available === false ? 'Missing' : 'Available'}`, [button(app.enabled ? '停用' : '启用', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'POST', body: JSON.stringify({ enabled: !app.enabled }) }); refresh(); }), button('删除', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'DELETE' }); refresh(); }, true)])));
+      apps.forEach(app => root.append(item(app.name, `${app.id} · ${app.available === false ? 'Missing' : 'Available'}`, [button(app.enabled ? '停用' : '启用', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'POST', body: JSON.stringify({ enabled: !app.enabled }) }); refresh(); }), button('删除', async () => { await api(`/api/v1/admin/apps/${encodeURIComponent(app.id)}`, { method: 'DELETE' }); refresh(); }, true)], `/app-icons/${encodeURIComponent(app.icon)}`)));
     }
     document.getElementById('newPair').onclick = async () => { try { const data = await api('/api/v1/admin/pair'); document.getElementById('pairCode').textContent = data.code; document.getElementById('pairExpiry').textContent = `${data.expiresIn} 秒内有效，一次性使用`; } catch (error) { document.getElementById('pairCode').textContent = ''; document.getElementById('pairExpiry').textContent = error.message; } };
     document.getElementById('revokeAll').onclick = async () => { if (confirm('撤销所有设备？')) { await api('/api/v1/admin/clients/revoke-all', { method: 'POST', body: '{}' }); refresh(); } };
-    document.getElementById('rescan').onclick = async () => { const data = await api('/api/v1/admin/apps/rescan', { method: 'POST', body: '{}' }); const root = document.getElementById('candidates'); root.replaceChildren(); data.candidates.forEach(app => root.append(item(app.name, `${app.source} · ${app.category}${app.configured ? ' · 已配置' : ''}`, app.configured ? [] : [button('批准', async () => { await api('/api/v1/admin/apps/approve', { method: 'POST', body: JSON.stringify({ discoveryId: app.discoveryId }) }); document.getElementById('rescan').click(); refresh(); })]))); };
+    document.getElementById('rescan').onclick = async () => { const data = await api('/api/v1/admin/apps/rescan', { method: 'POST', body: '{}' }); const root = document.getElementById('candidates'); root.replaceChildren(); data.candidates.forEach(app => root.append(item(app.name, `${app.source === 'msix' ? 'Windows 应用' : '桌面应用'} · ${app.category}${app.configured ? ' · 已配置' : ''}`, app.configured ? [] : [button('批准', async () => { await api('/api/v1/admin/apps/approve', { method: 'POST', body: JSON.stringify({ discoveryId: app.discoveryId }) }); document.getElementById('rescan').click(); refresh(); })], app.icon))); if (!data.candidates.length) root.textContent = '未发现可启动应用'; };
     document.getElementById('programForm').onsubmit = async event => { event.preventDefault(); const value = Object.fromEntries(new FormData(event.target)); await api('/api/v1/admin/apps/manual-program', { method: 'POST', body: JSON.stringify(value) }); event.target.reset(); refresh(); };
     document.getElementById('websiteForm').onsubmit = async event => { event.preventDefault(); const value = Object.fromEntries(new FormData(event.target)); await api('/api/v1/admin/apps/manual-website', { method: 'POST', body: JSON.stringify(value) }); event.target.reset(); refresh(); };
     if (!token) message.textContent = '缺少本机管理凭据，请从 Phone Remote 托盘打开。'; else refresh();

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class ServerInfo {
   const ServerInfo({
     required this.serverId,
@@ -162,12 +164,22 @@ class ConfiguredApp {
     required this.name,
     required this.available,
     required this.icon,
+    this.iconBytes,
   });
 
   final String id;
   final String name;
   final bool available;
   final String icon;
+  final Uint8List? iconBytes;
+
+  ConfiguredApp withIconBytes(Uint8List value) => ConfiguredApp(
+        id: id,
+        name: name,
+        available: available,
+        icon: icon,
+        iconBytes: value,
+      );
 
   factory ConfiguredApp.fromJson(Map<String, Object?> json) {
     final id = _string(json, 'id');

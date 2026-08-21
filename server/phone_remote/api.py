@@ -21,9 +21,7 @@ from .config import ConfigStore
 from .network import (
     NetworkDiagnostics,
     is_loopback,
-    local_ipv4_addresses,
-    start_with_windows_enabled,
-    wol_diagnostics,
+    is_private_lan,
 )
 from .pairing import PairingError, PairingManager, PairingRateLimited
 from .paths import RuntimePaths
@@ -62,6 +60,7 @@ class ApiContext:
     network: NetworkDiagnostics
     logger: logging.Logger
     port: int
+    web_port: int | None = None
     admin_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     _profile_lock: threading.Lock = field(default_factory=threading.Lock)
     _profile_checked_at: float = 0.0
@@ -82,9 +81,18 @@ class PhoneRemoteServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], context: ApiContext):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        context: ApiContext,
+        *,
+        allow_management: bool = True,
+        private_lan_only: bool = False,
+    ):
         super().__init__(address, PhoneRemoteHandler)
         self.context = context
+        self.allow_management = allow_management
+        self.private_lan_only = private_lan_only
 
 
 class PhoneRemoteHandler(BaseHTTPRequestHandler):
@@ -115,12 +123,16 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
     def _handle(self, method: str) -> None:
         context = self.server.context
         try:
+            if self.server.private_lan_only and not is_private_lan(self.client_address[0]):
+                raise ApiError(HTTPStatus.FORBIDDEN, "Web Remote is limited to the private LAN")
             if not context.remote_allowed(self.client_address[0]):
                 raise ApiError(HTTPStatus.FORBIDDEN, "connections are blocked on Public networks")
             path = urlparse(self.path).path
             if method in {"GET", "HEAD"} and self._serve_static(path, head=method == "HEAD"):
                 return
             if path.startswith("/api/v1/admin/"):
+                if not self.server.allow_management:
+                    raise ApiError(HTTPStatus.FORBIDDEN, "management API is unavailable here")
                 self._require_admin()
                 payload = self._admin_route(method, path)
                 self._json(HTTPStatus.OK, payload, head=method == "HEAD")
@@ -217,9 +229,10 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                     "name": context.identity.display_name,
                     "version": __version__,
                     "apiVersion": API_VERSION,
-                    "addresses": local_ipv4_addresses(),
+                    "addresses": context.network.addresses(),
                     "wakeTargets": context.network.wake_targets(),
                     "port": context.port,
+                    "webPort": context.web_port,
                     "configOk": config_error is None,
                     "configError": config_error,
                 },
@@ -273,13 +286,14 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                     "version": __version__,
                     "apiVersion": API_VERSION,
                     "port": context.port,
-                    "addresses": local_ipv4_addresses(),
+                    "webPort": context.web_port,
+                    "addresses": context.network.addresses(),
                     "identityFingerprint": context.identity.fingerprint,
                 },
                 "networkProfiles": [item.__dict__ for item in context.network.profiles()],
                 "firewall": context.network.firewall_status(),
-                "startWithWindows": start_with_windows_enabled(),
-                "wol": wol_diagnostics(),
+                "startWithWindows": context.network.start_with_windows(),
+                "wol": context.network.wol_diagnostics(),
                 "clients": context.credentials.list_clients(),
                 "apps": context.config.get()["apps"],
             }
@@ -386,6 +400,8 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
         if path in {"/", "/index.html"}:
             return self._file(context.paths.web_root / "index.html", "no-store", head=head)
         if path == "/manage" or path == "/manage/":
+            if not self.server.allow_management:
+                raise ApiError(HTTPStatus.FORBIDDEN, "management UI is unavailable here")
             if not is_loopback(self.client_address[0]):
                 raise ApiError(HTTPStatus.FORBIDDEN, "management UI is local-only")
             return self._file(context.paths.web_root / "manage.html", "no-store", head=head)

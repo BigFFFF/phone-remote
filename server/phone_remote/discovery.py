@@ -22,7 +22,8 @@ class DiscoveryPublisher:
     service: ServiceInfo | None = None
 
     def start(self) -> bool:
-        addresses = [socket.inet_aton(value) for value in local_ipv4_addresses()]
+        lan_addresses = local_ipv4_addresses()
+        addresses = [socket.inet_aton(value) for value in lan_addresses]
         if not addresses:
             self.logger.warning("mDNS discovery not started: no non-loopback IPv4 address")
             return False
@@ -44,7 +45,10 @@ class DiscoveryPublisher:
                 properties=properties,
                 server=f"{socket.gethostname()}.local.",
             )
-            self.zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
+            self.zeroconf = Zeroconf(
+                interfaces=lan_addresses,
+                ip_version=IPVersion.V4Only,
+            )
             self.zeroconf.register_service(self.service)
         except Exception:
             if self.zeroconf is not None:

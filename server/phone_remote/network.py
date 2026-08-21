@@ -5,6 +5,7 @@ import json
 import socket
 import subprocess
 import sys
+import threading
 import time
 import winreg
 from collections.abc import Sequence
@@ -13,21 +14,104 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .subprocess_utils import hidden_window_kwargs
+
 API_FIREWALL_RULE = "Phone Remote API"
 DISCOVERY_FIREWALL_RULE = "Phone Remote Discovery"
 STARTUP_VALUE_NAME = "Phone Remote"
+PHYSICAL_ADDRESS_CACHE_SECONDS = 15.0
+
+_physical_address_cache: tuple[str, ...] = ()
+_physical_address_cached_at = float("-inf")
+_physical_address_cache_lock = threading.Lock()
 
 
 def local_ipv4_addresses() -> list[str]:
+    if sys.platform == "win32":
+        physical = [value for value in _windows_physical_ipv4_addresses() if _is_lan_ipv4(value)]
+        if physical:
+            return physical
     addresses: list[str] = []
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             address = info[4][0]
-            if not address.startswith("127.") and address not in addresses:
+            if _is_lan_ipv4(address) and address not in addresses:
                 addresses.append(address)
     except socket.gaierror:
         pass
     return addresses
+
+
+def _windows_physical_ipv4_addresses() -> tuple[str, ...]:
+    global _physical_address_cache, _physical_address_cached_at
+
+    now = time.monotonic()
+    with _physical_address_cache_lock:
+        if now - _physical_address_cached_at < PHYSICAL_ADDRESS_CACHE_SECONDS:
+            return _physical_address_cache
+        _physical_address_cache = _query_windows_physical_ipv4_addresses()
+        _physical_address_cached_at = time.monotonic()
+        return _physical_address_cache
+
+
+def _query_windows_physical_ipv4_addresses() -> tuple[str, ...]:
+    script = (
+        "$items=Get-NetIPConfiguration -ErrorAction SilentlyContinue | "
+        "Where-Object {$_.NetAdapter.Status -eq 'Up' -and $_.NetAdapter.HardwareInterface};"
+        "$items|ForEach-Object{$_.IPv4Address|ForEach-Object{$_.IPAddress}}|"
+        "ConvertTo-Json -Compress"
+    )
+    try:
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=False,
+            shell=False,
+            **hidden_window_kwargs(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ()
+    if completed.returncode or not completed.stdout.strip():
+        return ()
+    try:
+        value: Any = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return ()
+    entries = value if isinstance(value, list) else [value]
+    addresses: list[str] = []
+    for item in entries:
+        address = str(item)
+        try:
+            parsed = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if parsed.version == 4 and address not in addresses:
+            addresses.append(address)
+    return tuple(addresses)
+
+
+def _is_lan_ipv4(address: str) -> bool:
+    try:
+        value = ipaddress.IPv4Address(address)
+    except ipaddress.AddressValueError:
+        return False
+    return value.is_link_local or _is_rfc1918_ipv4(address)
+
+
+def _is_rfc1918_ipv4(address: str) -> bool:
+    try:
+        value = ipaddress.IPv4Address(address)
+    except ipaddress.AddressValueError:
+        return False
+    return (
+        value in ipaddress.IPv4Network("10.0.0.0/8")
+        or value in ipaddress.IPv4Network("172.16.0.0/12")
+        or value in ipaddress.IPv4Network("192.168.0.0/16")
+    )
 
 
 def is_loopback(address: str) -> bool:
@@ -35,6 +119,14 @@ def is_loopback(address: str) -> bool:
         return ipaddress.ip_address(address).is_loopback
     except ValueError:
         return False
+
+
+def is_private_lan(address: str) -> bool:
+    try:
+        value = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return value.is_loopback or value.is_link_local or _is_rfc1918_ipv4(address)
 
 
 @dataclass(frozen=True)
@@ -48,6 +140,15 @@ class NetworkDiagnostics:
     def __init__(self) -> None:
         self._wake_targets_cache: list[dict[str, str]] = []
         self._wake_targets_cached_at = 0.0
+
+    def addresses(self) -> list[str]:
+        return local_ipv4_addresses()
+
+    def start_with_windows(self) -> bool:
+        return start_with_windows_enabled()
+
+    def wol_diagnostics(self) -> list[dict[str, Any]]:
+        return wol_diagnostics()
 
     def profiles(self) -> list[NetworkProfile]:
         if sys.platform != "win32":
@@ -65,6 +166,7 @@ class NetworkDiagnostics:
             timeout=10,
             check=False,
             shell=False,
+            **hidden_window_kwargs(),
         )
         if result.returncode or not result.stdout.strip():
             return []
@@ -105,7 +207,12 @@ class NetworkDiagnostics:
                 f"name={name}",
             ]
             completed = subprocess.run(
-                command, capture_output=True, timeout=10, check=False, shell=False
+                command,
+                capture_output=True,
+                timeout=10,
+                check=False,
+                shell=False,
+                **hidden_window_kwargs(),
             )
             result[key] = completed.returncode == 0
         return result
@@ -133,6 +240,7 @@ class NetworkDiagnostics:
                 timeout=10,
                 check=False,
                 shell=False,
+                **hidden_window_kwargs(),
             )
         except (OSError, subprocess.SubprocessError):
             self._wake_targets_cached_at = now
@@ -186,8 +294,11 @@ class NetworkDiagnostics:
         return list(targets)
 
 
-def firewall_install_commands(executable: Path, port: int) -> list[list[str]]:
+def firewall_install_commands(
+    executable: Path, port: int, web_port: int | None = None
+) -> list[list[str]]:
     program = str(executable.resolve())
+    tcp_ports = str(port) if web_port is None else f"{port},{web_port}"
     return [
         firewall_remove_command(API_FIREWALL_RULE),
         firewall_remove_command(DISCOVERY_FIREWALL_RULE),
@@ -202,7 +313,7 @@ def firewall_install_commands(executable: Path, port: int) -> list[list[str]]:
             "action=allow",
             f"program={program}",
             "protocol=TCP",
-            f"localport={port}",
+            f"localport={tcp_ports}",
             "profile=private",
             "remoteip=LocalSubnet",
             "enable=yes",
@@ -276,6 +387,7 @@ def wol_diagnostics() -> list[dict[str, Any]]:
         timeout=15,
         check=False,
         shell=False,
+        **hidden_window_kwargs(),
     )
     if completed.returncode or not completed.stdout.strip():
         return []
