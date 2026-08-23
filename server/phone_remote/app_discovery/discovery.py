@@ -4,9 +4,11 @@ import logging
 from collections.abc import Iterable
 from typing import Protocol
 
+from .app_paths import AppPathsProvider
 from .known_apps import apply_known_app
 from .models import DiscoveredApp, candidate_identity
 from .msix import MsixProvider
+from .registry import RegistryProvider
 from .start_menu import StartMenuProvider
 
 
@@ -22,7 +24,16 @@ class ApplicationDiscovery:
         providers: Iterable[Provider] | None = None,
         logger: logging.Logger | None = None,
     ):
-        self.providers = list(providers or (StartMenuProvider(), MsixProvider()))
+        self.providers = list(
+            (
+                StartMenuProvider(),
+                AppPathsProvider(),
+                RegistryProvider(),
+                MsixProvider(),
+            )
+            if providers is None
+            else providers
+        )
         self.logger = logger or logging.getLogger("phone_remote.app_discovery")
 
     def scan(self) -> list[DiscoveredApp]:

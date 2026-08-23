@@ -12,6 +12,12 @@ from urllib.parse import quote, urlparse
 APP_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 AUMID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,160}![A-Za-z0-9._-]{1,80}$")
 ICON_SUFFIXES = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+DEFAULT_CONFIG = {
+    "version": 1,
+    "initialDiscoveryComplete": False,
+    "browsers": {},
+    "apps": [],
+}
 
 
 def require_text(value: Any, field: str, max_length: int = 260) -> str:
@@ -69,6 +75,9 @@ def migrate_config(raw: Any) -> dict[str, Any]:
 
 def validate_config(raw: Any) -> dict[str, Any]:
     raw = migrate_config(raw)
+    initial_discovery_complete = raw.get("initialDiscoveryComplete", False)
+    if not isinstance(initial_discovery_complete, bool):
+        raise ValueError("initialDiscoveryComplete must be true or false")
     browser_source = raw.get("browsers", {})
     if not isinstance(browser_source, dict):
         raise ValueError("browsers must be an object")
@@ -157,7 +166,12 @@ def validate_config(raw: Any) -> dict[str, Any]:
                 "launch": launch,
             }
         )
-    return {"version": 1, "browsers": browsers, "apps": apps}
+    return {
+        "version": 1,
+        "initialDiscoveryComplete": initial_discovery_complete,
+        "browsers": browsers,
+        "apps": apps,
+    }
 
 
 class ConfigStore:
@@ -168,6 +182,14 @@ class ConfigStore:
         self._signature: object = None
         self._config: dict[str, Any] | None = None
         self._error: str | None = None
+
+    def initialize(self) -> bool:
+        """Create the single runtime configuration file when it is absent."""
+        with self._lock:
+            if self.path.is_file():
+                return False
+            self.write(copy.deepcopy(DEFAULT_CONFIG))
+            return True
 
     def _file_signature(self) -> object:
         try:

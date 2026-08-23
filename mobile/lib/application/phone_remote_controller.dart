@@ -141,7 +141,7 @@ class PhoneRemoteController extends ChangeNotifier {
     return device;
   }
 
-  Future<void> connect(Device device, {bool autoWake = true}) async {
+  Future<void> connect(Device device, {bool autoWake = false}) async {
     final generation = ++_connectionGeneration;
     _session?.close();
     _session = null;
@@ -315,6 +315,26 @@ class PhoneRemoteController extends ChangeNotifier {
     }
   }
 
+  Future<void> wakeAndConnect() async {
+    final device = preferredDevice;
+    if (device == null) {
+      throw const ApiException('Add a PC before using Wake on LAN.');
+    }
+    final capability = await _wakeService.capability(device);
+    if (capability.availability != WakeAvailability.available) {
+      throw ApiException(
+        capability.unavailableReason ??
+            'Wake on LAN is unavailable for this PC.',
+      );
+    }
+    await connect(device, autoWake: true);
+    if (!connected) {
+      throw ApiException(
+        _connectionError ?? 'The PC did not come online after Wake on LAN.',
+      );
+    }
+  }
+
   Future<void> sendAction(String action) =>
       _run((session) => session.sendAction(action));
 
@@ -344,7 +364,7 @@ class PhoneRemoteController extends ChangeNotifier {
       _apps = const <ConfiguredApp>[];
       _connectionPhase = RemoteConnectionPhase.offline;
       _connectionError = action == 'sleep'
-          ? 'The PC is sleeping. Tap Retry to send Wake on LAN.'
+          ? 'The PC is in standby. Use Wake on LAN in Settings to wake it.'
           : 'The PC is hibernating. Wake on LAN may be unavailable.';
       notifyListeners();
     }

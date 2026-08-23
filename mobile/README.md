@@ -1,8 +1,8 @@
 # Phone Remote Mobile
 
 Flutter 3.24.5 Android/iOS client for API v1. It provides discovery, identity-pinned pairing,
-secure multi-PC storage, Touchpad/D-pad controls, keyboard, media, approved apps, power, Android
-Wake on LAN, and offline Demo mode.
+secure multi-PC storage, configurable Touchpad/D-pad controls, keyboard, media, approved apps,
+standby/hibernate/restart/shutdown controls, explicit Android Wake on LAN, and offline Demo mode.
 
 ## Develop
 

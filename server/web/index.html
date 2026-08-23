@@ -158,6 +158,8 @@
       background: var(--surface);
       color: var(--muted);
       touch-action: none;
+      overscroll-behavior: contain;
+      -webkit-user-select: none;
       user-select: none;
     }
     .touchpad::before {
@@ -394,7 +396,8 @@
     <div id="powerMenu">
       <h2>电源</h2>
       <div class="power-grid">
-        <button class="warning" data-confirm="sleep">睡眠</button>
+        <button class="warning" data-confirm="sleep">待机 (S3)</button>
+        <button class="warning" data-confirm="hibernate">休眠</button>
         <button class="danger" data-confirm="restart">重启</button>
         <button class="danger" data-confirm="shutdown">关机</button>
       </div>
@@ -546,7 +549,7 @@
         if (button) button.classList.remove('busy');
       }
     }
-    async function sendMouse(payload) {
+    async function sendMouse(payload, quiet = false) {
       try {
         const response = await apiFetch('/api/v1/mouse', {
           method: 'POST',
@@ -554,9 +557,12 @@
           body: JSON.stringify(payload)
         });
         if (!response.ok) throw new Error('触控失败');
+        setConnection(true);
+        return true;
       } catch (error) {
         setConnection(false);
-        showToast(error.message || '连接失败', 1800);
+        if (!quiet) showToast(error.message || '连接失败', 1800);
+        return false;
       }
     }
     async function sendKeyboardText() {
@@ -742,19 +748,67 @@
     });
     const pointers = new Map();
     let gesture = null;
-    let pendingMove = { dx: 0, dy: 0 };
-    let moveTimer = 0;
     let lastTapTime = 0;
     let singleTapTimer = 0;
+    const tapSlop = 6;
+    const pointerTraffic = {
+      moveX: 0, moveY: 0, wheel: 0,
+      scheduled: 0, inFlight: 0, maxInFlight: 2,
+      lastFailureToast: 0
+    };
+    function hasPendingPointerTraffic() {
+      return Math.abs(pointerTraffic.moveX) >= 0.01 ||
+        Math.abs(pointerTraffic.moveY) >= 0.01 ||
+        Math.abs(pointerTraffic.wheel) >= 0.01;
+    }
+    function schedulePointerFlush() {
+      if (!pointerTraffic.scheduled) {
+        pointerTraffic.scheduled = requestAnimationFrame(flushPointerTraffic);
+      }
+    }
     function queueMove(dx, dy) {
-      pendingMove.dx += dx;
-      pendingMove.dy += dy;
-      if (moveTimer) return;
-      moveTimer = setTimeout(() => {
-        sendMouse({ type: 'move', dx: pendingMove.dx * 1.55, dy: pendingMove.dy * 1.55 });
-        pendingMove = { dx: 0, dy: 0 };
-        moveTimer = 0;
-      }, 24);
+      pointerTraffic.moveX += dx * 1.55;
+      pointerTraffic.moveY += dy * 1.55;
+      schedulePointerFlush();
+    }
+    function queueWheel(delta) {
+      pointerTraffic.wheel += delta * 9;
+      schedulePointerFlush();
+    }
+    function takeBounded(value, limit) {
+      return Math.max(-limit, Math.min(limit, value));
+    }
+    function flushPointerTraffic() {
+      pointerTraffic.scheduled = 0;
+      if (pointerTraffic.inFlight >= pointerTraffic.maxInFlight) {
+        schedulePointerFlush();
+        return;
+      }
+      let payload = null;
+      if (Math.abs(pointerTraffic.moveX) >= 0.01 || Math.abs(pointerTraffic.moveY) >= 0.01) {
+        const dx = takeBounded(pointerTraffic.moveX, 120);
+        const dy = takeBounded(pointerTraffic.moveY, 120);
+        pointerTraffic.moveX -= dx;
+        pointerTraffic.moveY -= dy;
+        payload = { type: 'move', dx, dy };
+      } else if (Math.abs(pointerTraffic.wheel) >= 0.01) {
+        const delta = takeBounded(pointerTraffic.wheel, 480);
+        pointerTraffic.wheel -= delta;
+        payload = { type: 'wheel', delta };
+      }
+      if (!payload) return;
+      pointerTraffic.inFlight += 1;
+      sendMouse(payload, true).then((ok) => {
+        const now = Date.now();
+        if (!ok && now - pointerTraffic.lastFailureToast > 2000) {
+          pointerTraffic.lastFailureToast = now;
+          showToast('触控连接失败', 1800);
+        }
+      }).finally(() => {
+        pointerTraffic.inFlight -= 1;
+        if (hasPendingPointerTraffic()) schedulePointerFlush();
+      });
+      if (hasPendingPointerTraffic()) schedulePointerFlush();
     }
     function registerTap() {
       const now = Date.now();
@@ -777,7 +831,8 @@
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.size === 1) {
         gesture = {
-          startTime: Date.now(), moved: false, multi: false,
+          startTime: Date.now(), moved: false, multi: false, scrollDistance: 0,
+          startX: event.clientX, startY: event.clientY,
           lastX: event.clientX, lastY: event.clientY, lastCenterY: event.clientY
         };
       } else if (gesture) {
@@ -793,34 +848,53 @@
       if (pointers.size >= 2) {
         const centerY = [...pointers.values()].reduce((sum, point) => sum + point.y, 0) / pointers.size;
         const dy = centerY - gesture.lastCenterY;
-        if (Math.abs(dy) >= 1) {
+        gesture.scrollDistance += Math.abs(dy);
+        if (gesture.scrollDistance >= tapSlop) {
           gesture.moved = true;
-          sendMouse({ type: 'wheel', delta: dy * 9 });
+          queueWheel(dy);
         }
         gesture.lastCenterY = centerY;
       } else if (!gesture.multi) {
-        const dx = event.clientX - gesture.lastX;
-        const dy = event.clientY - gesture.lastY;
-        if (Math.abs(dx) + Math.abs(dy) > 1) {
-          gesture.moved = true;
-          queueMove(dx, dy);
+        const samples = typeof event.getCoalescedEvents === 'function'
+          ? event.getCoalescedEvents()
+          : [event];
+        for (const sample of samples.length ? samples : [event]) {
+          const dx = sample.clientX - gesture.lastX;
+          const dy = sample.clientY - gesture.lastY;
+          const totalX = sample.clientX - gesture.startX;
+          const totalY = sample.clientY - gesture.startY;
+          if (!gesture.moved && Math.hypot(totalX, totalY) >= tapSlop) {
+            gesture.moved = true;
+            queueMove(totalX, totalY);
+          } else if (gesture.moved) {
+            queueMove(dx, dy);
+          }
+          gesture.lastX = sample.clientX;
+          gesture.lastY = sample.clientY;
         }
-        gesture.lastX = event.clientX;
-        gesture.lastY = event.clientY;
       }
       event.preventDefault();
     });
-    function endPointer(event) {
+    function endPointer(event, cancelled = false) {
       pointers.delete(event.pointerId);
       if (pointers.size === 0) {
-        if (gesture && !gesture.multi && !gesture.moved && Date.now() - gesture.startTime < 280) registerTap();
+        if (gesture && !cancelled && !gesture.moved && Date.now() - gesture.startTime < 280) {
+          if (gesture.multi) {
+            vibrate(10);
+            sendMouse({ type: 'click', button: 'right' });
+          } else {
+            registerTap();
+          }
+        }
         gesture = null;
         touchpad.classList.remove('active');
+      } else if (gesture?.multi) {
+        gesture.lastCenterY = [...pointers.values()].reduce((sum, point) => sum + point.y, 0) / pointers.size;
       }
       event.preventDefault();
     }
     touchpad.addEventListener('pointerup', endPointer);
-    touchpad.addEventListener('pointercancel', endPointer);
+    touchpad.addEventListener('pointercancel', (event) => endPointer(event, true));
     async function keepAwake() {
       if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
       try { wakeLock = await navigator.wakeLock.request('screen'); } catch { wakeLock = null; }

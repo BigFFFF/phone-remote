@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from phone_remote.api import ApiContext, PhoneRemoteServer
+from phone_remote.api import ApiContext, PhoneRemoteHandler, PhoneRemoteServer
 from phone_remote.app_discovery import ApplicationDiscovery
 from phone_remote.app_launcher import AppLauncher
 from phone_remote.auth import CredentialStore
@@ -209,6 +209,23 @@ def test_public_info_and_static_security_headers(api: RunningApi) -> None:
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     connection.close()
+
+
+def test_api_supports_http11_keep_alive(api: RunningApi) -> None:
+    connection = http.client.HTTPConnection("127.0.0.1", api.port, timeout=5)
+    connection.request("GET", "/api/v1/info")
+    first = connection.getresponse()
+    assert first.version == 11
+    first.read()
+
+    connection.request("GET", "/api/v1/info")
+    second = connection.getresponse()
+    assert second.status == 200
+    second.read()
+    connection.close()
+
+    assert PhoneRemoteHandler.protocol_version == "HTTP/1.1"
+    assert PhoneRemoteHandler.disable_nagle_algorithm is True
 
 
 def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) -> None:

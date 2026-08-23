@@ -99,6 +99,8 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
     server: PhoneRemoteServer
     server_version = "PhoneRemote/1.0"
     sys_version = ""
+    protocol_version = "HTTP/1.1"
+    disable_nagle_algorithm = True
 
     def log_message(self, format_string: str, *args: Any) -> None:
         self.server.context.logger.debug(
@@ -253,9 +255,8 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/mouse":
             result = context.control.mouse(self._read_json())
-            context.logger.info(
-                "control action client=%s action=mouse:%s", client_id, result["message"]
-            )
+            log = context.logger.debug if result["message"] == "move" else context.logger.info
+            log("control action client=%s action=mouse:%s", client_id, result["message"])
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/text":
             data = self._read_json()

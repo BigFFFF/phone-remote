@@ -5,8 +5,8 @@ Flutter 手机端和浏览器备用遥控器。
 
 ## 下载正式版
 
-- [Windows 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.1.0.exe)
-- [Android 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.1.0-android.apk)
+- [Windows 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.2.0.exe)
+- [Android 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.2.0-android.apk)
 - [版本说明与校验文件](https://github.com/BigFFFF/phone-remote/releases/latest)
 
 Windows 与 Android 端需要安装在同一可信局域网内。首次连接请按 Windows 托盘程序显示的
@@ -17,7 +17,10 @@ Windows 与 Android 端需要安装在同一可信局域网内。首次连接请
 - 一次配对、长期信任，多手机与多电脑独立管理
 - Touchpad、D-pad、键盘、媒体、应用启动和电源控制
 - mDNS 自动发现与手工地址连接
-- Android Wake on LAN；iOS 在能力不可用时安全降级
+- Android 手动 Wake on LAN；iOS 在能力不可用时安全降级
+- 可调节并持久化的 Touchpad 指针与滚动灵敏度
+- Windows 首次运行自动发现已安装的 Edge 和 Steam
+- 待机、休眠、重启与关机控制
 - 原生 App 使用固定 Server Identity 的 HTTPS
 - Web Remote 供可信私有局域网中的普通浏览器使用
 

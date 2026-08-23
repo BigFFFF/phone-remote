@@ -15,9 +15,11 @@ The output is `packaging\windows\dist\PhoneRemoteSetup.exe`.
 - Adds program-specific `Private` + `LocalSubnet` rules for TCP 8765/8766 and UDP 5353.
 - Removes its startup entry and firewall rules on uninstall.
 - Preserves `%LOCALAPPDATA%\PhoneRemote` by default; full cleanup is an explicit uninstall choice.
+- Keeps the stable installer AppId, so a newer installer upgrades the existing installation in place.
+- Creates only `%LOCALAPPDATA%\PhoneRemote\config.json` for runtime configuration.
 
-First run may migrate a legacy adjacent `config.json` and missing icons, but never overwrites
-existing Local AppData state.
+On the first 1.2 startup, the Companion scans for Microsoft Edge and Steam, adds installed matches
+to the approved application list, and records completion in that same configuration file.
 
 Before release, validate fresh install, upgrade, firewall repair, startup, uninstall/reinstall,
 state retention, optional cleanup, Private-LAN access, and Public-network blocking on a disposable

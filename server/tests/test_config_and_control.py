@@ -7,7 +7,12 @@ import pytest
 
 from phone_remote.app_launcher import AppLauncher
 from phone_remote.config import ConfigStore, migrate_config, validate_config
-from phone_remote.windows_control import MAX_TEXT_LENGTH, ControlService, _windows_sleep_command
+from phone_remote.windows_control import (
+    MAX_TEXT_LENGTH,
+    ControlService,
+    WindowsBackend,
+    _windows_sleep_command,
+)
 
 
 @pytest.fixture()
@@ -161,6 +166,8 @@ def test_control_validation_and_mouse_clamps(store: ConfigStore) -> None:
         control.text("x" * (MAX_TEXT_LENGTH + 1))
     with pytest.raises(ValueError, match="invalid mouse button"):
         control.mouse({"type": "click", "button": "middle"})
+    with pytest.raises(ValueError, match="unknown power action"):
+        control.power("hybrid arbitrary command")
     with pytest.raises(ValueError, match="numeric"):
         control.mouse({"type": "move", "dx": "NaN", "dy": 0})
 
@@ -172,6 +179,28 @@ def test_sleep_command_requests_suspend_without_disabling_wake_events() -> None:
     assert command[:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
     assert "PowerState]::Suspend,$false,$false" in script
     assert "SetSuspendState" in script
+
+
+def test_windows_mouse_move_preserves_fractional_deltas() -> None:
+    events = []
+
+    class User32:
+        def mouse_event(self, *args):
+            events.append(args)
+
+    backend = WindowsBackend.__new__(WindowsBackend)
+    backend.user32 = User32()
+    backend._mouse_remainder_x = 0.0
+    backend._mouse_remainder_y = 0.0
+
+    backend.mouse_move(0.4, -0.4)
+    backend.mouse_move(0.4, -0.4)
+    assert events == []
+
+    backend.mouse_move(0.4, -0.4)
+    assert events == [(WindowsBackend.MOUSEEVENTF_MOVE, 1, -1, 0, 0)]
+    assert backend._mouse_remainder_x == pytest.approx(0.2)
+    assert backend._mouse_remainder_y == pytest.approx(-0.2)
 
 
 def test_process_launch_uses_argument_array_without_shell(store: ConfigStore) -> None:

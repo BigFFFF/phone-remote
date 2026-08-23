@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import json
 import os
 import sys
 import tempfile
@@ -17,7 +16,7 @@ from .app_discovery import ApplicationDiscovery
 from .app_launcher import AppLauncher
 from .auth import CredentialStore
 from .catalog import ApplicationCatalog
-from .config import ConfigStore, validate_config
+from .config import DEFAULT_CONFIG, ConfigStore, validate_config
 from .discovery import DiscoveryPublisher
 from .logging_setup import configure_logging
 from .network import NetworkDiagnostics, set_start_with_windows
@@ -55,6 +54,7 @@ class ServerRuntime:
         )
         self.identity = self.identity_manager.ensure(args.name)
         self.config = ConfigStore(self.paths.config_path, self.paths.icon_root)
+        self.config.initialize()
         self.config.get()
         self.credentials = CredentialStore(self.state)
         self.pairing_display = PairingDisplay(print_codes=args.print_pair_code or args.no_tray)
@@ -67,6 +67,15 @@ class ServerRuntime:
             self.app_discovery,
             self.paths.bundle_root / "resources" / "icons" / "default.svg",
         )
+        try:
+            added_apps = self.catalog.initialize_known_apps()
+            if added_apps:
+                self.logger.info(
+                    "initial application discovery configured apps=%s",
+                    ",".join(item["id"] for item in added_apps),
+                )
+        except Exception:
+            self.logger.exception("initial application discovery failed")
         self.network = NetworkDiagnostics()
         self.context = ApiContext(
             identity=self.identity,
@@ -261,15 +270,7 @@ def run_smoke_test() -> int:
     """Exercise packaged resources and crypto without user-data or system mutations."""
     try:
         paths = RuntimePaths.resolve()
-        config_example = next(
-            path
-            for path in (
-                paths.bundle_root / "config.example.json",
-                paths.executable_root / "config.example.json",
-            )
-            if path.is_file()
-        )
-        validate_config(json.loads(config_example.read_text(encoding="utf-8")))
+        validate_config(DEFAULT_CONFIG)
         for required in (
             paths.web_root / "index.html",
             paths.web_root / "manage.html",

@@ -61,21 +61,11 @@ class RuntimePaths:
         )
 
     def prepare(self) -> list[str]:
-        """Create private user storage from the current bundled defaults."""
+        """Create private user storage without duplicating runtime configuration."""
         events: list[str] = []
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.log_root.mkdir(parents=True, exist_ok=True)
         self.icon_root.mkdir(parents=True, exist_ok=True)
-
-        if not self.config_path.exists():
-            example_candidates = [
-                self.bundle_root / "config.example.json",
-                self.executable_root / "config.example.json",
-            ]
-            source = next((item for item in example_candidates if item.is_file()), None)
-            if source is not None:
-                shutil.copy2(source, self.config_path)
-                events.append(f"copied config from {source}")
 
         bundled_icons = self.bundle_root / "resources" / "icons"
         default_icon = bundled_icons / "default.svg"

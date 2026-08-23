@@ -196,6 +196,15 @@ def test_web_pairing_ignores_only_responses_from_replaced_credentials() -> None:
     assert page.count("if (!credential) return;") >= 2
 
 
+def test_web_touchpad_coalesces_input_and_bounds_request_concurrency() -> None:
+    page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
+    assert "event.getCoalescedEvents()" in page
+    assert "maxInFlight: 2" in page
+    assert "requestAnimationFrame(flushPointerTraffic)" in page
+    assert "sendMouse({ type: 'click', button: 'right' })" in page
+    assert "endPointer(event, true)" in page
+
+
 def test_discovery_failure_never_blocks_manual_connection(monkeypatch) -> None:
     import phone_remote.discovery as discovery
 
@@ -250,6 +259,8 @@ def test_installer_owns_only_minimal_firewall_rules_and_preserves_data() -> None
     assert "removeuserdata" in lowered
     assert "{localappdata}\\phoneremote" in lowered
     assert "uninstallrun" in lowered
+    assert "config.example.json" not in lowered
+    assert "appid={{de0769d4-51a1-41b8-864a-5b5ccb1f47b7}" in lowered
 
 
 def test_ci_pins_python_and_never_executes_real_power_or_firewall_mutation() -> None:

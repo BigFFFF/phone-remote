@@ -1,5 +1,5 @@
 #define MyAppName "Phone Remote"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "BigFFFF"
 #define MyAppExeName "PhoneRemote.exe"
 #define ApiRuleName "Phone Remote API"
@@ -35,7 +35,6 @@ Name: "startup"; Description: "Start Phone Remote with Windows"; GroupDescriptio
 
 [Files]
 Source: "..\..\dist\PhoneRemote.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\config.example.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Phone Remote"; Filename: "{app}\{#MyAppExeName}"

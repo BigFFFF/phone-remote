@@ -102,6 +102,8 @@ class WindowsBackend:
             wintypes.LPARAM,
         )
         self.user32.PostMessageW.restype = wintypes.BOOL
+        self._mouse_remainder_x = 0.0
+        self._mouse_remainder_y = 0.0
 
     def key(self, vk_code: int) -> None:
         self.user32.keybd_event(vk_code, 0, 0, 0)
@@ -135,7 +137,14 @@ class WindowsBackend:
                 time.sleep(0.005)
 
     def mouse_move(self, dx: float, dy: float) -> None:
-        self.user32.mouse_event(self.MOUSEEVENTF_MOVE, int(dx), int(dy), 0, 0)
+        total_x = dx + self._mouse_remainder_x
+        total_y = dy + self._mouse_remainder_y
+        whole_x = int(total_x)
+        whole_y = int(total_y)
+        self._mouse_remainder_x = total_x - whole_x
+        self._mouse_remainder_y = total_y - whole_y
+        if whole_x != 0 or whole_y != 0:
+            self.user32.mouse_event(self.MOUSEEVENTF_MOVE, whole_x, whole_y, 0, 0)
 
     def mouse_click(self, button: str) -> None:
         if button == "right":

@@ -7,7 +7,6 @@ on:
       - "server/**"
       - "protocol/**"
       - "packaging/windows/**"
-      - "config.example.json"
       - ".github/workflows/server-ci.yml"
   workflow_dispatch:
 

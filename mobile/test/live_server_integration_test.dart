@@ -42,6 +42,7 @@ void main() {
       ).writeAsString(
         jsonEncode(<String, Object?>{
           'version': 1,
+          'initialDiscoveryComplete': true,
           'browsers': <String, Object?>{},
           'apps': <Object?>[
             <String, Object?>{

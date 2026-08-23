@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../application/phone_remote_controller.dart';
 import '../models/device.dart';
 import '../services/pointer_move_dispatcher.dart';
+import '../services/touchpad_settings.dart';
 import 'find_computers_screen.dart';
 
 class RemoteShell extends StatefulWidget {
@@ -14,14 +15,16 @@ class RemoteShell extends StatefulWidget {
     super.key,
     required this.controller,
     this.demo = false,
+    this.touchpadSettingsStore,
   });
 
-  const RemoteShell.demo({super.key})
+  const RemoteShell.demo({super.key, this.touchpadSettingsStore})
       : controller = null,
         demo = true;
 
   final PhoneRemoteController? controller;
   final bool demo;
+  final TouchpadSettingsStore? touchpadSettingsStore;
 
   @override
   State<RemoteShell> createState() => _RemoteShellState();
@@ -29,6 +32,45 @@ class RemoteShell extends StatefulWidget {
 
 class _RemoteShellState extends State<RemoteShell> {
   int _index = 0;
+  TouchpadSettings _touchpadSettings = const TouchpadSettings();
+  late final TouchpadSettingsStore _touchpadSettingsStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _touchpadSettingsStore =
+        widget.touchpadSettingsStore ?? _defaultTouchpadSettingsStore();
+    unawaited(_loadTouchpadSettings());
+  }
+
+  TouchpadSettingsStore _defaultTouchpadSettingsStore() {
+    try {
+      return SharedPreferencesTouchpadSettingsStore();
+    } on StateError {
+      // Flutter unit tests do not register the platform preference plugin.
+      return MemoryTouchpadSettingsStore();
+    }
+  }
+
+  Future<void> _loadTouchpadSettings() async {
+    try {
+      final settings = await _touchpadSettingsStore.load();
+      if (mounted) {
+        setState(() => _touchpadSettings = settings);
+      }
+    } on Object {
+      // Defaults remain usable if preference storage is temporarily unavailable.
+    }
+  }
+
+  void _changeTouchpadSettings(TouchpadSettings settings) {
+    setState(() => _touchpadSettings = settings);
+  }
+
+  void _saveTouchpadSettings() {
+    unawaited(
+        _touchpadSettingsStore.save(_touchpadSettings).catchError((_) {}));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +86,20 @@ class _RemoteShellState extends State<RemoteShell> {
 
   Widget _buildShell(BuildContext context, Device? device) {
     final pages = <Widget>[
-      _RemotePage(controller: widget.controller, demo: widget.demo),
+      _RemotePage(
+        controller: widget.controller,
+        demo: widget.demo,
+        touchpadSettings: _touchpadSettings,
+      ),
       _AppsPage(controller: widget.controller, demo: widget.demo),
       _DevicesPage(controller: widget.controller, demo: widget.demo),
-      _SettingsPage(controller: widget.controller, demo: widget.demo),
+      _SettingsPage(
+        controller: widget.controller,
+        demo: widget.demo,
+        touchpadSettings: _touchpadSettings,
+        onTouchpadSettingsChanged: _changeTouchpadSettings,
+        onTouchpadSettingsChangeEnd: _saveTouchpadSettings,
+      ),
     ];
     return Scaffold(
       appBar: AppBar(
@@ -150,10 +202,15 @@ class _ConnectionChip extends StatelessWidget {
 }
 
 class _RemotePage extends StatefulWidget {
-  const _RemotePage({required this.controller, required this.demo});
+  const _RemotePage({
+    required this.controller,
+    required this.demo,
+    required this.touchpadSettings,
+  });
 
   final PhoneRemoteController? controller;
   final bool demo;
+  final TouchpadSettings touchpadSettings;
 
   @override
   State<_RemotePage> createState() => _RemotePageState();
@@ -164,6 +221,8 @@ class _RemotePageState extends State<_RemotePage> {
   bool _touchpad = true;
   late final PointerMoveDispatcher _moves;
   late final PointerMoveDispatcher _wheel;
+  String? _lastDispatcherError;
+  DateTime? _lastDispatcherErrorAt;
 
   @override
   void initState() {
@@ -191,7 +250,18 @@ class _RemotePageState extends State<_RemotePage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    final message = '$error';
+    final now = DateTime.now();
+    if (_lastDispatcherError == message &&
+        _lastDispatcherErrorAt != null &&
+        now.difference(_lastDispatcherErrorAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastDispatcherError = message;
+    _lastDispatcherErrorAt = now;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(content: Text('$error')),
     );
   }
@@ -248,6 +318,22 @@ class _RemotePageState extends State<_RemotePage> {
         onTap: () => _invoke(
           'Fullscreen',
           (controller) => controller.sendAction('f11'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Desktop',
+        icon: Icons.desktop_windows_outlined,
+        onTap: () => _invoke(
+          'Desktop',
+          (controller) => controller.sendAction('desktop'),
+        ),
+      ),
+      _QuickControl(
+        label: 'Close active window',
+        icon: Icons.close,
+        onTap: () => _invoke(
+          'Close active window',
+          (controller) => controller.sendAction('close_active'),
         ),
       ),
       _QuickControl(
@@ -332,14 +418,24 @@ class _RemotePageState extends State<_RemotePage> {
                     status: _lastAction,
                     onMove: (delta) {
                       _setLastAction('Pointer move');
-                      if (!widget.demo) {
-                        _moves.add(delta.dx * 1.35, delta.dy * 1.35);
+                      if (!widget.demo &&
+                          (widget.controller?.connected ?? false)) {
+                        final sensitivity =
+                            widget.touchpadSettings.pointerSensitivity;
+                        _moves.add(
+                          delta.dx * 1.35 * sensitivity,
+                          delta.dy * 1.35 * sensitivity,
+                        );
                       }
                     },
                     onWheel: (delta) {
                       _setLastAction('Scroll');
-                      if (!widget.demo) {
-                        _wheel.add(0, delta);
+                      if (!widget.demo &&
+                          (widget.controller?.connected ?? false)) {
+                        _wheel.add(
+                          0,
+                          delta * widget.touchpadSettings.scrollSensitivity,
+                        );
                       }
                     },
                     onLeftClick: () => _invoke(
@@ -373,9 +469,13 @@ class _RemotePageState extends State<_RemotePage> {
                   Expanded(
                     child: Row(
                       children: <Widget>[
-                        for (var column = 0; column < 3; column++) ...<Widget>[
+                        for (var column = 0; column < 4; column++) ...<Widget>[
                           if (column > 0) const SizedBox(width: 8),
-                          Expanded(child: quickControls[row * 3 + column]),
+                          Expanded(
+                            child: row * 4 + column < quickControls.length
+                                ? quickControls[row * 4 + column]
+                                : const SizedBox.shrink(),
+                          ),
                         ],
                       ],
                     ),
@@ -462,20 +562,28 @@ class _KeyboardSheetState extends State<_KeyboardSheet> {
           const SizedBox(height: 8),
           Row(
             children: <Widget>[
-              for (final item in const <(String, String)>[
-                ('Enter', 'enter'),
-                ('Tab', 'tab'),
-                ('Escape', 'escape'),
-                ('⌫', 'back'),
+              for (final item in const <(String, String, IconData)>[
+                ('Enter', 'enter', Icons.keyboard_return),
+                ('Tab', 'tab', Icons.keyboard_tab),
+                ('Escape', 'escape', Icons.close),
+                ('Backspace', 'back', Icons.backspace_outlined),
               ])
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: OutlinedButton(
-                      onPressed: _sending
-                          ? null
-                          : () => widget.onAction(item.$1, item.$2),
-                      child: Text(item.$1),
+                    child: Semantics(
+                      button: true,
+                      label: item.$1,
+                      child: Tooltip(
+                        message: item.$1,
+                        excludeFromSemantics: true,
+                        child: OutlinedButton(
+                          onPressed: _sending
+                              ? null
+                              : () => widget.onAction(item.$1, item.$2),
+                          child: ExcludeSemantics(child: Icon(item.$3)),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1076,10 +1184,19 @@ class _DevicesPage extends StatelessWidget {
 }
 
 class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.controller, required this.demo});
+  const _SettingsPage({
+    required this.controller,
+    required this.demo,
+    required this.touchpadSettings,
+    required this.onTouchpadSettingsChanged,
+    required this.onTouchpadSettingsChangeEnd,
+  });
 
   final PhoneRemoteController? controller;
   final bool demo;
+  final TouchpadSettings touchpadSettings;
+  final ValueChanged<TouchpadSettings> onTouchpadSettingsChanged;
+  final VoidCallback onTouchpadSettingsChangeEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1095,9 +1212,17 @@ class _SettingsPage extends StatelessWidget {
         ),
         const Divider(),
         ListTile(
+          leading: const Icon(Icons.settings_input_antenna_rounded),
+          title: const Text('Wake on LAN'),
+          subtitle: const Text('Wake this PC only when you tap here.'),
+          onTap: () => _wake(context),
+        ),
+        ListTile(
           leading: const Icon(Icons.bedtime_outlined),
-          title: const Text('Sleep'),
-          onTap: () => _power(context, 'sleep', 'Sleep'),
+          title: const Text('Standby (S3)'),
+          subtitle: const Text(
+              'Low-power standby; Windows hardware decides the supported state.'),
+          onTap: () => _power(context, 'sleep', 'Standby'),
         ),
         ListTile(
           leading: const Icon(Icons.pause_circle_outline),
@@ -1115,13 +1240,84 @@ class _SettingsPage extends StatelessWidget {
           onTap: () => _confirmPower(context, 'shutdown', 'Shut down'),
         ),
         const Divider(),
+        ListTile(
+          leading: const Icon(Icons.mouse_outlined),
+          title: const Text('Pointer sensitivity'),
+          subtitle: Slider(
+            value: touchpadSettings.pointerSensitivity,
+            min: TouchpadSettings.minimumSensitivity,
+            max: TouchpadSettings.maximumSensitivity,
+            divisions: 6,
+            label: '${touchpadSettings.pointerSensitivity.toStringAsFixed(2)}×',
+            onChanged: (value) => onTouchpadSettingsChanged(
+              touchpadSettings.copyWith(pointerSensitivity: value),
+            ),
+            onChangeEnd: (_) => onTouchpadSettingsChangeEnd(),
+          ),
+          trailing: Text(
+            '${touchpadSettings.pointerSensitivity.toStringAsFixed(2)}×',
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.swap_vert_rounded),
+          title: const Text('Scroll sensitivity'),
+          subtitle: Slider(
+            value: touchpadSettings.scrollSensitivity,
+            min: TouchpadSettings.minimumSensitivity,
+            max: TouchpadSettings.maximumSensitivity,
+            divisions: 6,
+            label: '${touchpadSettings.scrollSensitivity.toStringAsFixed(2)}×',
+            onChanged: (value) => onTouchpadSettingsChanged(
+              touchpadSettings.copyWith(scrollSensitivity: value),
+            ),
+            onChangeEnd: (_) => onTouchpadSettingsChangeEnd(),
+          ),
+          trailing: Text(
+            '${touchpadSettings.scrollSensitivity.toStringAsFixed(2)}×',
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () {
+              onTouchpadSettingsChanged(const TouchpadSettings());
+              onTouchpadSettingsChangeEnd();
+            },
+            icon: const Icon(Icons.restore_rounded),
+            label: const Text('Reset touchpad settings'),
+          ),
+        ),
+        const Divider(),
         const ListTile(
           leading: Icon(Icons.info_outline_rounded),
-          title: Text('Phone Remote 1.0.0'),
+          title: Text('Phone Remote 1.2.0'),
           subtitle: Text('Mobile API v1'),
         ),
       ],
     );
+  }
+
+  Future<void> _wake(BuildContext context) async {
+    if (demo) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wake on LAN simulated in Demo')),
+      );
+      return;
+    }
+    try {
+      await controller?.wakeAndConnect();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PC connection is ready')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+    }
   }
 
   Future<void> _confirmPower(

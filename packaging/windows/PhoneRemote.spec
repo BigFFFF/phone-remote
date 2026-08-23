@@ -16,7 +16,6 @@ analysis = Analysis(
     datas=[
         (str(server_root / "web"), "web"),
         (str(server_root / "resources"), "resources"),
-        (str(repository_root / "config.example.json"), "."),
     ],
     hiddenimports=hidden_imports,
     hookspath=[],

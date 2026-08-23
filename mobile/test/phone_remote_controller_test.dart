@@ -51,7 +51,8 @@ void main() {
     expect(controller.discoveredDevices.single.serverId, 'discovered-1');
   });
 
-  test('sends Wake on LAN and retries a trusted offline PC', () async {
+  test('ordinary connect never wakes a trusted offline PC automatically',
+      () async {
     final repository = RealDeviceRepository(
       metadataStorage: MemoryMetadataStorage(),
       credentialStorage: MemoryCredentialStorage(),
@@ -59,6 +60,33 @@ void main() {
     final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
     await repository.savePaired(device, 'secret');
     final sessions = _FlakySessionFactory();
+    final wake = _RecordingWakeService();
+    final controller = PhoneRemoteController(
+      deviceRepository: repository,
+      discoveryService: const _FakeDiscoveryService(),
+      pairingService: PairingService(
+        apiClientFactory: _apiFactory(),
+        deviceRepository: repository,
+      ),
+      remoteSessionFactory: sessions,
+      wakeService: wake,
+    );
+
+    await controller.connect(device);
+
+    expect(controller.connectionPhase, RemoteConnectionPhase.offline);
+    expect(sessions.attempts, 1);
+    expect(wake.sent, 0);
+  });
+
+  test('manual Wake on LAN retries a trusted offline PC', () async {
+    final repository = RealDeviceRepository(
+      metadataStorage: MemoryMetadataStorage(),
+      credentialStorage: MemoryCredentialStorage(),
+    );
+    final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
+    await repository.savePaired(device, 'secret');
+    final sessions = _FlakySessionFactory(failuresBeforeSuccess: 2);
     final wake = _RecordingWakeService();
     final waits = <Duration>[];
     final apiFactory = _apiFactory();
@@ -74,15 +102,17 @@ void main() {
       delay: (duration) async => waits.add(duration),
     );
 
-    await controller.connect(device);
+    await controller.initialize();
+    await controller.wakeAndConnect();
 
     expect(controller.connectionPhase, RemoteConnectionPhase.connected);
-    expect(sessions.attempts, 2);
+    expect(sessions.attempts, 3);
     expect(wake.sent, 1);
     expect(waits, <Duration>[const Duration(seconds: 1)]);
   });
 
-  test('sleep marks the session offline and exposes the Wake on LAN retry',
+  test(
+      'sleep marks the session offline and exposes manual Wake on LAN guidance',
       () async {
     final repository = RealDeviceRepository(
       metadataStorage: MemoryMetadataStorage(),
@@ -136,7 +166,7 @@ void main() {
       },
     );
 
-    final firstConnection = controller.connect(first);
+    final firstConnection = controller.connect(first, autoWake: true);
     await delayStarted.future;
     await controller.connect(second, autoWake: false);
     expect(controller.connectionPhase, RemoteConnectionPhase.connected);
@@ -267,12 +297,15 @@ class _FakeDiscoveryService implements DiscoveryService {
 }
 
 class _FlakySessionFactory implements RemoteSessionFactory {
+  _FlakySessionFactory({this.failuresBeforeSuccess = 1});
+
+  final int failuresBeforeSuccess;
   int attempts = 0;
 
   @override
   Future<RemoteSession> connect(Device device) async {
     attempts += 1;
-    if (attempts == 1) {
+    if (attempts <= failuresBeforeSuccess) {
       throw const ApiException('PC is offline.');
     }
     return _TestRemoteSession(device);

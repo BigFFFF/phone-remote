@@ -7,6 +7,7 @@ import 'package:phone_remote/main.dart';
 import 'package:phone_remote/models/api_models.dart';
 import 'package:phone_remote/models/device.dart';
 import 'package:phone_remote/repositories/device_repository.dart';
+import 'package:phone_remote/services/api_client.dart';
 import 'package:phone_remote/services/discovery_service.dart';
 import 'package:phone_remote/services/pairing_service.dart';
 import 'package:phone_remote/services/remote_session.dart';
@@ -136,6 +137,8 @@ void main() {
       'Back',
       'Keyboard',
       'Fullscreen',
+      'Desktop',
+      'Close active window',
       'Volume down',
       'Mute',
       'Volume up',
@@ -148,6 +151,14 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pump();
     expect(apiFactory.commands, contains('action:escape'));
+
+    await tester.tap(find.byTooltip('Desktop'));
+    await tester.pump();
+    expect(apiFactory.commands, contains('action:desktop'));
+
+    await tester.tap(find.byTooltip('Close active window'));
+    await tester.pump();
+    expect(apiFactory.commands, contains('action:close_active'));
 
     await tester.tap(find.text('Apps'));
     await tester.pumpAndSettle();
@@ -193,6 +204,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('offline touchpad drops movement without repeated snackbars',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _repository();
+    final device = Device(
+      id: 'offline-pc',
+      serverId: 'offline-pc',
+      name: 'Offline PC',
+      host: '192.168.1.20',
+      serverIdentity: 'a' * 64,
+      clientId: 'client-1',
+      credentialReference: 'credential.client-1',
+      favorite: true,
+    );
+    await repository.savePaired(device, 'credential');
+
+    await tester.pumpWidget(
+      PhoneRemoteApp(
+        controller: _controller(
+          repository,
+          remoteSessionFactory: const _OfflineRemoteSessionFactory(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Offline'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('touchpad-surface')),
+      const Offset(80, 40),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keyboard sheet can be dismissed from its backdrop safely',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1000);
@@ -205,6 +256,10 @@ void main() {
     await tester.tap(find.byIcon(Icons.keyboard));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Enter'), findsNothing);
+    expect(find.text('Escape'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_return), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsWidgets);
 
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
@@ -222,6 +277,7 @@ RealDeviceRepository _repository() => RealDeviceRepository(
 PhoneRemoteController _controller(
   DeviceRepository repository, {
   FakeApiClientFactory? apiFactory,
+  RemoteSessionFactory? remoteSessionFactory,
 }) {
   final currentApiFactory = apiFactory ?? _apiFactory();
   return PhoneRemoteController(
@@ -231,10 +287,11 @@ PhoneRemoteController _controller(
       apiClientFactory: currentApiFactory,
       deviceRepository: repository,
     ),
-    remoteSessionFactory: RealRemoteSessionFactory(
-      deviceRepository: repository,
-      apiClientFactory: currentApiFactory,
-    ),
+    remoteSessionFactory: remoteSessionFactory ??
+        RealRemoteSessionFactory(
+          deviceRepository: repository,
+          apiClientFactory: currentApiFactory,
+        ),
     wakeService: const UnavailableWakeService('Unavailable in tests.'),
   );
 }
@@ -270,4 +327,13 @@ class _EmptyDiscoveryService implements DiscoveryService {
     Duration timeout = const Duration(seconds: 5),
   }) async =>
       const <DiscoveredDevice>[];
+}
+
+class _OfflineRemoteSessionFactory implements RemoteSessionFactory {
+  const _OfflineRemoteSessionFactory();
+
+  @override
+  Future<RemoteSession> connect(Device device) async {
+    throw const ApiException('PC unavailable in test.');
+  }
 }

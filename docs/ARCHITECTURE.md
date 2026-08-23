@@ -15,8 +15,12 @@ Windows Companion
 ```
 
 The Flutter app keeps UI, discovery, pairing, sessions, Wake on LAN, device metadata, and secure
-credentials separate. Pointer movement is coalesced before transmission. Demo mode is local and
-does not contact the LAN.
+credentials separate. Pointer movement is sensitivity-adjusted and coalesced before transmission.
+The HTTPS API uses persistent HTTP/1.1 connections so pointer traffic does not perform a new TLS
+handshake per batch. TCP_NODELAY is enabled for control responses, mobile movement batches are
+dispatched every 8 ms with bounded concurrency, and the Windows backend carries fractional pointer
+remainders forward instead of discarding slow movement. Demo mode is local and does not contact the
+LAN.
 
 The Companion exposes two remote transports and a loopback-only management API. Control commands
 are serialized. Application discovery produces candidates; only applications approved locally are
@@ -32,9 +36,11 @@ config.json  state.json  server-identity.key  server.crt  server.key  icons/  lo
 
 The Server Identity remains stable across certificate renewal. Client credentials are stored as
 salted verifiers on Windows and in Android Keystore/iOS Keychain-backed storage on mobile.
+`config.json` is the only mutable configuration file. Defaults are embedded in the Companion, so
+the installer and Program Files directory do not carry a second configuration copy.
 
 ## Sources of truth
 
 - API contract: `protocol/openapi.yaml`
-- Runtime configuration schema: `config.example.json` and server validation code
+- Runtime configuration schema and defaults: `server/phone_remote/config.py`
 - Current release state: `docs/RELEASE_GATE.md`

@@ -7,6 +7,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
+from phone_remote.config import ConfigStore
 from phone_remote.paths import RuntimePaths
 from phone_remote.security import IdentityChangedError, IdentityManager
 from phone_remote.state import StateStore
@@ -125,7 +126,7 @@ def test_invalid_state_is_rejected(tmp_path: Path) -> None:
         StateStore(path).read()
 
 
-def test_runtime_paths_use_current_bundle_without_legacy_import(tmp_path: Path) -> None:
+def test_runtime_paths_keep_configuration_in_data_root_only(tmp_path: Path) -> None:
     executable = tmp_path / "installed"
     bundle = tmp_path / "bundle"
     data = tmp_path / "data"
@@ -134,7 +135,6 @@ def test_runtime_paths_use_current_bundle_without_legacy_import(tmp_path: Path) 
     bundle.mkdir()
     (bundle / "web").mkdir()
     (bundle / "resources" / "icons").mkdir(parents=True)
-    (bundle / "config.example.json").write_text('{"current":true}', encoding="utf-8")
     (bundle / "resources" / "icons" / "default.svg").write_text("current", encoding="utf-8")
     (executable / "config.json").write_text('{"legacy":true}', encoding="utf-8")
     (executable / "icons" / "app.png").write_bytes(b"legacy")
@@ -152,9 +152,17 @@ def test_runtime_paths_use_current_bundle_without_legacy_import(tmp_path: Path) 
         bundle / "web",
     )
     paths.prepare()
-    assert paths.config_path.read_text() == '{"current":true}'
+    assert not paths.config_path.exists()
     assert (paths.icon_root / "default.svg").read_text() == "current"
     assert not (paths.icon_root / "app.png").exists()
-    paths.config_path.write_text("user-change", encoding="utf-8")
+    store = ConfigStore(paths.config_path, paths.icon_root)
+    assert store.initialize() is True
+    assert store.initialize() is False
+    assert store.get() == {
+        "version": 1,
+        "initialDiscoveryComplete": False,
+        "browsers": {},
+        "apps": [],
+    }
     paths.prepare()
-    assert paths.config_path.read_text() == "user-change"
+    assert store.get()["initialDiscoveryComplete"] is False

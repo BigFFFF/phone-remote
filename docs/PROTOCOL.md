@@ -22,11 +22,18 @@ Pairing sessions expire after five minutes and are rate/attempt limited. Each cl
 independently revocable Credential. Native clients retain the Server ID and identity fingerprint
 and block unexpected identity changes.
 
+Wake on LAN is an explicit mobile action. Ordinary startup, reconnect, and saved-device selection
+never send a magic packet automatically.
+
 ## Control boundary
 
 Remote requests contain only enumerated actions, bounded mouse values, text up to 2,000 Unicode
 characters, a power action, or an approved application ID. Executable paths, URLs, shell commands,
 and arbitrary command lines are not accepted. Request bodies are limited to 16 KiB.
+
+The `sleep` and `hibernate` power actions request Windows standby and hibernation. The actual power
+state and Wake on LAN availability remain subject to the PC firmware, Windows power policy, and
+network adapter support.
 
 Product versions may differ while both sides report `apiVersion: 1`. New clients use `/api/v1/*`;
 legacy authenticated aliases remain for compatibility.

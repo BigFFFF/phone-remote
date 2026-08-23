@@ -1,6 +1,6 @@
 # Release status
 
-Status as of 2026-08-22.
+Status as of 2026-08-23.
 
 ## Implemented and locally tested
 
@@ -8,7 +8,10 @@ Status as of 2026-08-22.
 - Tray management, Web Remote, mDNS, network policy, packaging scripts, and CI definitions
 - Flutter onboarding, discovery, secure multi-PC storage, Remote controls, Demo mode, and Android WoL
 - Android APK/AAB project structure and iOS project/resources
-- GitHub `v1.1.0` direct-download packaging: signed Android APK and Windows Inno Setup installer
+- GitHub `v1.2.0` direct-download packaging: signed Android APK and Windows Inno Setup installer
+- In-place Android and Windows upgrades, single-file Companion configuration, and first-run
+  Edge/Steam discovery
+- Coalesced, sensitivity-adjustable native touch input and request-bounded Web Remote touch input
 
 ## Remaining acceptance work
 

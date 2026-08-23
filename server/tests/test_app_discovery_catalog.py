@@ -134,6 +134,43 @@ def test_catalog_requires_rescan_before_approval_and_never_auto_configures(
     assert (tmp_path / "icons" / "steam.png").exists()
 
 
+def test_initial_discovery_configures_edge_and_steam_once(catalog_setup) -> None:
+    tmp_path, store, default_icon = catalog_setup
+    edge = tmp_path / "msedge.exe"
+    steam = tmp_path / "Steam.exe"
+    edge.touch()
+    steam.touch()
+    candidates = [
+        program_candidate(
+            name="Microsoft Edge",
+            executable=str(edge),
+            source="app-paths",
+            confidence=90,
+        ),
+        program_candidate(
+            name="Steam",
+            executable=str(steam),
+            source="start-menu",
+            confidence=90,
+        ),
+    ]
+    catalog = ApplicationCatalog(
+        store,
+        ApplicationDiscovery([Provider(candidates)]),
+        default_icon,
+    )
+
+    added = catalog.initialize_known_apps()
+
+    config = store.get()
+    assert [item["id"] for item in added] == ["edge", "steam"]
+    assert [item["id"] for item in config["apps"]] == ["edge", "steam"]
+    assert config["browsers"]["edge"]["path"] == str(edge)
+    assert config["apps"][1]["launch"]["args"] == ["steam://open/bigpicture"]
+    assert config["initialDiscoveryComplete"] is True
+    assert catalog.initialize_known_apps() == []
+
+
 def test_rescan_marks_missing_without_overwriting_user_fields(catalog_setup) -> None:
     tmp_path, store, default_icon = catalog_setup
     executable = tmp_path / "player.exe"

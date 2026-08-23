@@ -50,6 +50,51 @@ class ApplicationCatalog:
         with self._lock:
             return [self._public_candidate(item) for item in self._candidates.values()]
 
+    def initialize_known_apps(self) -> list[dict[str, Any]]:
+        """Auto-configure Edge and Steam once, recording the result in config.json."""
+        with self._lock:
+            config = self.config.get()
+            if config["initialDiscoveryComplete"]:
+                return []
+
+            candidates = self.discovery.scan()
+            self.icons.populate_candidates(candidates)
+            self._candidates = {item.discovery_id: item for item in candidates}
+            configured_identities = {_launch_identity(item["launch"]) for item in config["apps"]}
+            added: list[dict[str, Any]] = []
+            for known_app_id in ("edge", "steam"):
+                candidate = next(
+                    (item for item in candidates if item.known_app_id == known_app_id),
+                    None,
+                )
+                if candidate is None or candidate.launch["type"] != "program":
+                    continue
+                if known_app_id == "edge":
+                    config["browsers"]["edge"] = {
+                        "path": candidate.launch["path"],
+                        "args": [],
+                        "fullscreenArgs": ["--start-fullscreen"],
+                    }
+                identity = _launch_identity(candidate.launch)
+                if identity in configured_identities:
+                    continue
+                app_id = self._unique_id(known_app_id, config)
+                app = {
+                    "id": app_id,
+                    "name": candidate.name,
+                    "enabled": True,
+                    "available": True,
+                    "icon": self._import_icon(candidate.icon, app_id),
+                    "launch": candidate.launch,
+                }
+                config["apps"].append(app)
+                configured_identities.add(identity)
+                added.append(app)
+
+            config["initialDiscoveryComplete"] = True
+            self.config.write(config)
+            return added
+
     def approve(self, discovery_id: str) -> dict[str, Any]:
         with self._lock:
             candidate = self._candidates.get(discovery_id)
