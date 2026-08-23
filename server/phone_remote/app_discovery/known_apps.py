@@ -31,11 +31,18 @@ KNOWN_APPS = (
 
 def match_known_app(candidate: DiscoveredApp) -> KnownApp | None:
     name = candidate.name.casefold()
-    executable = ""
     if candidate.launch["type"] == "program":
         executable = Path(os.path.expandvars(candidate.launch["path"])).name.casefold()
+        # A display name from an uninstall registry entry is not enough to prove
+        # that its DisplayIcon is the actual application launcher.  Requiring the
+        # known executable name prevents entries such as "Steam" pointing at an
+        # uninstaller from being auto-approved as Steam.
+        return next(
+            (known for known in KNOWN_APPS if executable in known.executable_aliases),
+            None,
+        )
     for known in KNOWN_APPS:
-        if executable in known.executable_aliases or name in known.display_aliases:
+        if name in known.display_aliases:
             return known
     return None
 

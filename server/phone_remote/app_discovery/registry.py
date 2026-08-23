@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -8,6 +9,14 @@ from .models import DiscoveredApp, program_candidate
 
 if sys.platform == "win32":
     import winreg
+
+
+_AUXILIARY_EXECUTABLE = re.compile(
+    r"^(?:unins\d*.*|uninst(?:all|aller)?.*|setup|installer|install|"
+    r"maintenancetool|repair|remove|modify)$",
+    re.IGNORECASE,
+)
+_AUXILIARY_NAME_PARTS = ("卸载", "移除", "修复")
 
 
 class RegistryProvider:
@@ -41,6 +50,8 @@ class RegistryProvider:
                         if not name or not display_icon:
                             continue
                         executable = _display_icon_executable(display_icon)
+                        if not _is_launchable_registry_entry(name, executable):
+                            continue
                         candidate = program_candidate(
                             name=name,
                             executable=executable,
@@ -68,3 +79,15 @@ def _display_icon_executable(value: str) -> str:
         return expanded[1:closing] if closing > 1 else ""
     candidate = expanded.rsplit(",", 1)[0]
     return str(Path(candidate.strip()))
+
+
+def _is_launchable_registry_entry(name: str, executable: str) -> bool:
+    """Reject uninstall/maintenance binaries exposed as uninstall DisplayIcon values."""
+    cleaned_name = " ".join(name.split()).strip()
+    stem = Path(executable).stem
+    if not cleaned_name or not executable or _AUXILIARY_EXECUTABLE.fullmatch(stem):
+        return False
+    lowered = cleaned_name.casefold()
+    if re.search(r"\b(?:uninstall|uninstaller|remove|repair)\b", lowered):
+        return False
+    return not any(part in cleaned_name for part in _AUXILIARY_NAME_PARTS)

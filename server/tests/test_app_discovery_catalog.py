@@ -6,6 +6,7 @@ from PIL import Image
 
 from phone_remote.app_discovery.discovery import ApplicationDiscovery, merge_candidates
 from phone_remote.app_discovery.models import appx_candidate, program_candidate
+from phone_remote.app_discovery.registry import _is_launchable_registry_entry
 from phone_remote.app_discovery.start_menu import _best_name, _is_user_facing_shortcut
 from phone_remote.catalog import ApplicationCatalog
 from phone_remote.config import ConfigStore
@@ -97,6 +98,28 @@ def test_duplicate_candidates_merge_and_known_app_matches(tmp_path: Path) -> Non
     assert result[0].sources == ["registry", "start-menu"]
 
 
+def test_steam_uninstaller_is_not_a_known_app_or_registry_launcher(tmp_path: Path) -> None:
+    launcher = tmp_path / "Steam.exe"
+    uninstaller = tmp_path / "uninstall.exe"
+    launcher.touch()
+    uninstaller.touch()
+    wrong = program_candidate(
+        name="Steam", executable=str(uninstaller), source="registry-uninstall", confidence=55
+    )
+    right = program_candidate(
+        name="Steam", executable=str(launcher), source="start-menu", confidence=90
+    )
+
+    result = merge_candidates([wrong, right])
+
+    assert len(result) == 2
+    assert wrong is not None and wrong.known_app_id is None
+    assert right is not None and right.known_app_id == "steam"
+    assert not _is_launchable_registry_entry("Steam", str(uninstaller))
+    assert not _is_launchable_registry_entry("卸载 Steam", str(launcher))
+    assert _is_launchable_registry_entry("Steam", str(launcher))
+
+
 def test_provider_failure_does_not_abort_scan(tmp_path: Path) -> None:
     executable = tmp_path / "app.exe"
     executable.touch()
@@ -169,6 +192,45 @@ def test_initial_discovery_configures_edge_and_steam_once(catalog_setup) -> None
     assert config["apps"][1]["launch"]["args"] == ["steam://open/bigpicture"]
     assert config["initialDiscoveryComplete"] is True
     assert catalog.initialize_known_apps() == []
+
+
+def test_initial_discovery_prefers_launcher_and_repairs_legacy_steam_uninstaller(
+    catalog_setup,
+) -> None:
+    tmp_path, store, default_icon = catalog_setup
+    uninstaller = tmp_path / "uninstall.exe"
+    steam = tmp_path / "Steam.exe"
+    uninstaller.touch()
+    steam.touch()
+    config = store.get()
+    config["initialDiscoveryComplete"] = True
+    config["apps"].append(
+        {
+            "id": "steam",
+            "name": "Steam",
+            "enabled": True,
+            "available": True,
+            "icon": "default.svg",
+            "launch": {"type": "program", "path": str(uninstaller), "args": []},
+        }
+    )
+    store.write(config)
+    candidates = [
+        program_candidate(
+            name="Steam", executable=str(uninstaller), source="registry-uninstall", confidence=55
+        ),
+        program_candidate(name="Steam", executable=str(steam), source="start-menu", confidence=90),
+    ]
+    catalog = ApplicationCatalog(
+        store,
+        ApplicationDiscovery([Provider(candidates)]),
+        default_icon,
+    )
+
+    assert catalog.initialize_known_apps() == []
+    repaired = store.get()["apps"][0]
+    assert repaired["launch"]["path"] == str(steam)
+    assert repaired["launch"]["args"] == ["steam://open/bigpicture"]
 
 
 def test_rescan_marks_missing_without_overwriting_user_fields(catalog_setup) -> None:

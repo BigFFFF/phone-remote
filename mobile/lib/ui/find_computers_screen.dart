@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../application/phone_remote_controller.dart';
+import '../localization.dart';
 import '../models/server_endpoint.dart';
 import '../services/api_client.dart';
 import 'pairing_screen.dart';
@@ -74,7 +75,8 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
     final message = switch (error) {
       ApiException() => error.message,
       FormatException() => error.message,
-      _ => 'Unable to find that PC. Check the address and try again.',
+      _ =>
+        context.tr('Unable to find that PC. Check the address and try again.'),
     };
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message.toString())),
@@ -84,7 +86,7 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Find your PC')),
+      appBar: AppBar(title: Text(context.tr('Find your PC'))),
       body: AnimatedBuilder(
         animation: widget.controller,
         builder: (context, _) {
@@ -108,15 +110,15 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
                     : const Icon(Icons.radar_rounded),
                 label: Text(
                   widget.controller.searching
-                      ? 'Finding Computers…'
-                      : 'Find Computers',
+                      ? context.tr('Finding Computers…')
+                      : context.tr('Find Computers'),
                 ),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _preparingPairing ? null : _manualAddress,
                 icon: const Icon(Icons.edit_location_alt_outlined),
-                label: const Text('Enter Address Manually'),
+                label: Text(context.tr('Enter Address Manually')),
               ),
               const SizedBox(height: 12),
               TextButton.icon(
@@ -128,20 +130,21 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
                   );
                 },
                 icon: const Icon(Icons.play_circle_outline_rounded),
-                label: const Text('Try Demo'),
+                label: Text(context.tr('Try Demo')),
               ),
               if (_preparingPairing) ...<Widget>[
                 const SizedBox(height: 24),
                 const LinearProgressIndicator(),
                 const SizedBox(height: 8),
-                const Text(
-                  'Creating a secure pairing session on the Windows PC…',
+                Text(
+                  context.tr(
+                      'Creating a secure pairing session on the Windows PC…'),
                   textAlign: TextAlign.center,
                 ),
               ],
               if (results.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 32),
-                Text('Available',
+                Text(context.tr('Available'),
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 for (final device in results)
@@ -153,8 +156,8 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
                       title: Text(device.name),
                       subtitle: Text(
                         device.apiVersion == 1 && device.tls
-                            ? '${device.host} • Secure API v1'
-                            : '${device.host} • Update required',
+                            ? '${device.host} • ${context.tr('Secure API v1')}'
+                            : '${device.host} • ${context.tr('Update required')}',
                       ),
                       trailing: FilledButton.tonal(
                         onPressed: device.apiVersion == 1 &&
@@ -175,7 +178,7 @@ class _FindComputersScreenState extends State<FindComputersScreen> {
                                 }
                               }
                             : null,
-                        child: const Text('Pair'),
+                        child: Text(context.tr('Pair')),
                       ),
                     ),
                   ),
@@ -217,7 +220,7 @@ class _ManualAddressDialogState extends State<_ManualAddressDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Enter PC address'),
+      title: Text(context.tr('Enter PC address')),
       content: TextField(
         controller: _controller,
         autofocus: true,
@@ -232,9 +235,9 @@ class _ManualAddressDialogState extends State<_ManualAddressDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.tr('Cancel')),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Continue')),
+        FilledButton(onPressed: _submit, child: Text(context.tr('Continue'))),
       ],
     );
   }

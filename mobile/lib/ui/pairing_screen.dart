@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../application/phone_remote_controller.dart';
+import '../localization.dart';
 import '../services/api_client.dart';
 import '../services/pairing_service.dart';
 
@@ -64,7 +65,7 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pair securely')),
+      appBar: AppBar(title: Text(context.tr('Pair securely'))),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: <Widget>[
@@ -76,8 +77,9 @@ class _PairingScreenState extends State<PairingScreen> {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Enter the six-digit code shown by Phone Remote on your Windows PC.',
+          Text(
+            context.tr(
+                'Enter the six-digit code shown by Phone Remote on your Windows PC.'),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 32),
@@ -95,7 +97,7 @@ class _PairingScreenState extends State<PairingScreen> {
                   letterSpacing: 12,
                 ),
             decoration: InputDecoration(
-              labelText: 'Pairing code',
+              labelText: context.tr('Pairing code'),
               errorText: _error,
             ),
             onSubmitted: (_) => _complete(),
@@ -108,11 +110,11 @@ class _PairingScreenState extends State<PairingScreen> {
                     dimension: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Pair'),
+                : Text(context.tr('Pair')),
           ),
           const SizedBox(height: 16),
           Text(
-            'The code expires in ${widget.attempt.session.expiresIn ~/ 60} minutes.',
+            '${context.tr('The code expires in')} ${widget.attempt.session.expiresIn ~/ 60} ${context.tr('minutes.')}',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),

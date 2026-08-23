@@ -51,22 +51,26 @@ class ApplicationCatalog:
             return [self._public_candidate(item) for item in self._candidates.values()]
 
     def initialize_known_apps(self) -> list[dict[str, Any]]:
-        """Auto-configure Edge and Steam once, recording the result in config.json."""
+        """Auto-configure Edge and Steam once and repair a legacy bad Steam choice."""
         with self._lock:
             config = self.config.get()
-            if config["initialDiscoveryComplete"]:
-                return []
-
             candidates = self.discovery.scan()
             self.icons.populate_candidates(candidates)
             self._candidates = {item.discovery_id: item for item in candidates}
+            best_known = {
+                known_app_id: self._best_known_candidate(candidates, known_app_id)
+                for known_app_id in ("edge", "steam")
+            }
+            repaired = self._repair_legacy_steam(config, best_known["steam"])
+            if config["initialDiscoveryComplete"]:
+                if repaired:
+                    self.config.write(config)
+                return []
+
             configured_identities = {_launch_identity(item["launch"]) for item in config["apps"]}
             added: list[dict[str, Any]] = []
             for known_app_id in ("edge", "steam"):
-                candidate = next(
-                    (item for item in candidates if item.known_app_id == known_app_id),
-                    None,
-                )
+                candidate = best_known[known_app_id]
                 if candidate is None or candidate.launch["type"] != "program":
                     continue
                 if known_app_id == "edge":
@@ -94,6 +98,53 @@ class ApplicationCatalog:
             config["initialDiscoveryComplete"] = True
             self.config.write(config)
             return added
+
+    @staticmethod
+    def _best_known_candidate(
+        candidates: list[DiscoveredApp], known_app_id: str
+    ) -> DiscoveredApp | None:
+        matches = [item for item in candidates if item.known_app_id == known_app_id]
+        if not matches:
+            return None
+        source_priority = {"start-menu": 3, "app-paths": 2, "msix": 1, "registry-uninstall": 0}
+        return max(
+            matches,
+            key=lambda item: (
+                max((source_priority.get(source, 1) for source in item.sources), default=1),
+                item.confidence,
+                -len(item.launch.get("path", "")),
+            ),
+        )
+
+    def _repair_legacy_steam(self, config: dict[str, Any], candidate: DiscoveredApp | None) -> bool:
+        """Replace the specific legacy auto-approved Steam uninstaller entry."""
+        if candidate is None or candidate.launch["type"] != "program":
+            return False
+        for app in config["apps"]:
+            launch = app.get("launch", {})
+            if (
+                app.get("id") != "steam"
+                or str(app.get("name", "")).casefold() != "steam"
+                or launch.get("type") != "program"
+            ):
+                continue
+            executable = Path(os.path.expandvars(str(launch.get("path", "")))).name.casefold()
+            if executable == "steam.exe" or not re.match(
+                r"^(?:unins\d*.*|uninst(?:all|aller)?.*|setup|installer|install|remove|repair)",
+                Path(executable).stem,
+                re.IGNORECASE,
+            ):
+                continue
+            app.update(
+                {
+                    "name": candidate.name,
+                    "available": True,
+                    "icon": self._import_icon(candidate.icon, "steam"),
+                    "launch": candidate.launch,
+                }
+            )
+            return True
+        return False
 
     def approve(self, discovery_id: str) -> dict[str, Any]:
         with self._lock:

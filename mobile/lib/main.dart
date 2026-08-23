@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'application/phone_remote_controller.dart';
 import 'data/storage.dart';
+import 'localization.dart';
 import 'repositories/device_repository.dart';
 import 'services/api_client.dart';
 import 'services/discovery_service.dart';
@@ -50,11 +53,36 @@ class PhoneRemoteApp extends StatefulWidget {
 
 class _PhoneRemoteAppState extends State<PhoneRemoteApp> {
   late final Future<void> _initialization;
+  late Locale _locale;
 
   @override
   void initState() {
     super.initState();
+    final systemLanguage =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    _locale = Locale(systemLanguage == 'zh' ? 'zh' : 'en');
     _initialization = widget.controller.initialize();
+    _loadLanguage();
+  }
+
+  Future<void> _loadLanguage() async {
+    try {
+      final saved =
+          await SharedPreferencesAsync().getString('phone-remote-language');
+      if (mounted && (saved == 'zh' || saved == 'en')) {
+        setState(() => _locale = Locale(saved!));
+      }
+    } on Object {
+      // The system-language default remains available without preference storage.
+    }
+  }
+
+  void _setLocale(Locale locale) {
+    if (locale.languageCode != 'zh' && locale.languageCode != 'en') return;
+    setState(() => _locale = Locale(locale.languageCode));
+    SharedPreferencesAsync()
+        .setString('phone-remote-language', locale.languageCode)
+        .catchError((_) {});
   }
 
   @override
@@ -62,12 +90,24 @@ class _PhoneRemoteAppState extends State<PhoneRemoteApp> {
     return MaterialApp(
       title: 'Phone Remote',
       debugShowCheckedModeBanner: false,
+      locale: _locale,
+      supportedLocales: const <Locale>[Locale('zh'), Locale('en')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF126E82),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+      ),
+      builder: (context, child) => AppLanguageScope(
+        locale: _locale,
+        onLocaleChanged: _setLocale,
+        child: child!,
       ),
       home: FutureBuilder<void>(
         future: _initialization,
@@ -83,7 +123,7 @@ class _PhoneRemoteAppState extends State<PhoneRemoteApp> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Unable to load saved devices.\n${snapshot.error}',
+                    '${context.tr('Unable to load saved devices.')}\n${snapshot.error}',
                     textAlign: TextAlign.center,
                   ),
                 ),

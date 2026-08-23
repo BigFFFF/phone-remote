@@ -8,7 +8,7 @@ Source readiness does not imply signing, store approval, or publication.
 | Android | Sign AAB, test LAN/control/WoL on physical devices, complete Play listing and privacy forms |
 | iOS | Build on current supported Xcode, test physical devices, sign, prepare TestFlight/App Store metadata |
 
-GitHub `v1.2.0` provides a signed Android APK and an unsigned Windows installer for direct download.
+GitHub `v1.3.0` provides a signed Android APK and an unsigned Windows installer for direct download.
 The Android release key is retained locally and excluded from version control. Store publication is a
 separate gate from this direct-download release.
 

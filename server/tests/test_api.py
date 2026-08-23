@@ -12,6 +12,7 @@ from phone_remote.app_launcher import AppLauncher
 from phone_remote.auth import CredentialStore
 from phone_remote.catalog import ApplicationCatalog
 from phone_remote.config import ConfigStore
+from phone_remote.localization import UiLanguageStore
 from phone_remote.pairing import PairingManager
 from phone_remote.paths import RuntimePaths
 from phone_remote.security import ServerIdentity
@@ -183,6 +184,8 @@ def api(tmp_path: Path):
         network=FakeNetwork(),
         logger=logger,
         port=0,
+        startup_command=("phone-remote.exe",),
+        ui_language=UiLanguageStore(tmp_path / "ui-language.txt"),
         admin_token="admin-secret",
     )
     server = PhoneRemoteServer(("127.0.0.1", 0), context)
@@ -326,6 +329,39 @@ def test_admin_api_is_token_protected(api: RunningApi) -> None:
     status, data, _ = api.request("GET", "/api/v1/admin/pair", admin="admin-secret")
     assert status == 200 and data["code"] == "123456"
     assert api.request("GET", "/api/v1/admin/overview", admin="admin-secret")[0] == 200
+
+
+def test_admin_can_toggle_start_with_windows(
+    api: RunningApi, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    changes = []
+    monkeypatch.setattr(
+        "phone_remote.api.set_start_with_windows",
+        lambda command, enabled: changes.append((tuple(command), enabled)),
+    )
+
+    status, data, _ = api.request(
+        "POST",
+        "/api/v1/admin/runtime/startup",
+        {"enabled": True},
+        admin="admin-secret",
+    )
+
+    assert status == 200 and data["enabled"] is True
+    assert changes == [(("phone-remote.exe",), True)]
+
+
+def test_admin_language_selection_is_persisted(api: RunningApi) -> None:
+    status, data, _ = api.request(
+        "POST",
+        "/api/v1/admin/runtime/language",
+        {"language": "zh"},
+        admin="admin-secret",
+    )
+    assert status == 200 and data["language"] == "zh"
+
+    status, overview, _ = api.request("GET", "/api/v1/admin/overview", admin="admin-secret")
+    assert status == 200 and overview["uiLanguage"] == "zh"
 
 
 def test_private_lan_web_listener_serves_remote_and_keeps_management_loopback_only(

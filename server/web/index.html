@@ -81,6 +81,7 @@
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
     .dot.connected { background: var(--ok); }
     .header-button { width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; }
+    .language-select { min-height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 7px; background: var(--surface); color: var(--text); font: inherit; font-weight: 700; }
     .views { min-height: 0; overflow: hidden; }
     .view {
       display: none;
@@ -309,106 +310,107 @@
     <header>
       <div class="brand">
         <h1>Phone Remote</h1>
-        <div class="connection"><span id="dot" class="dot"></span><span id="status">正在连接</span></div>
+        <div class="connection"><span id="dot" class="dot"></span><span id="status" data-i18n="connecting">正在连接</span></div>
       </div>
-      <button id="powerButton" class="header-button" aria-label="电源菜单" title="电源菜单">
+      <select id="languageSelect" class="language-select" aria-label="语言"><option value="zh">中文</option><option value="en">English</option></select>
+      <button id="powerButton" class="header-button" data-i18n-aria="powerMenu" aria-label="电源菜单" title="电源菜单">
         <img class="icon" src="/assets/power.svg" alt="">
       </button>
     </header>
 
     <div class="views">
-      <section id="view-remote" class="view active" aria-label="遥控按键">
+      <section id="view-remote" class="view active" data-i18n-aria="remoteControls" aria-label="遥控按键">
         <div class="quick-actions">
-          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span>返回</span></button>
-          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span>桌面</span></button>
-          <button class="action-button" data-action="close_active"><img class="icon" src="/assets/x.svg" alt=""><span>关闭</span></button>
+          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span data-i18n="back">返回</span></button>
+          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span data-i18n="desktop">桌面</span></button>
+          <button class="action-button" data-action="close_active"><img class="icon" src="/assets/x.svg" alt=""><span data-i18n="close">关闭</span></button>
         </div>
         <div class="dpad">
-          <button class="up" data-action="up" data-repeat aria-label="向上" title="向上"><img class="icon" src="/assets/arrow-up.svg" alt=""></button>
-          <button class="left" data-action="left" data-repeat aria-label="向左" title="向左"><img class="icon" src="/assets/arrow-left.svg" alt=""></button>
-          <button class="ok" data-action="enter" aria-label="确认" title="确认"><img class="icon" src="/assets/circle-dot.svg" alt=""></button>
-          <button class="right" data-action="right" data-repeat aria-label="向右" title="向右"><img class="icon" src="/assets/arrow-right.svg" alt=""></button>
-          <button class="down" data-action="down" data-repeat aria-label="向下" title="向下"><img class="icon" src="/assets/arrow-down.svg" alt=""></button>
+          <button class="up" data-action="up" data-repeat data-i18n-aria="up" aria-label="向上" title="向上"><img class="icon" src="/assets/arrow-up.svg" alt=""></button>
+          <button class="left" data-action="left" data-repeat data-i18n-aria="left" aria-label="向左" title="向左"><img class="icon" src="/assets/arrow-left.svg" alt=""></button>
+          <button class="ok" data-action="enter" data-i18n-aria="confirm" aria-label="确认" title="确认"><img class="icon" src="/assets/circle-dot.svg" alt=""></button>
+          <button class="right" data-action="right" data-repeat data-i18n-aria="right" aria-label="向右" title="向右"><img class="icon" src="/assets/arrow-right.svg" alt=""></button>
+          <button class="down" data-action="down" data-repeat data-i18n-aria="down" aria-label="向下" title="向下"><img class="icon" src="/assets/arrow-down.svg" alt=""></button>
         </div>
         <div class="media-controls">
-          <button class="media-button" data-action="volume_down" data-repeat aria-label="降低音量" title="降低音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>−</strong></span></button>
-          <button class="media-button" data-action="volume_mute" aria-label="静音" title="静音"><img class="icon" src="/assets/volume-x.svg" alt=""></button>
-          <button class="media-button" data-action="media_play_pause" aria-label="播放或暂停" title="播放或暂停"><img class="icon" src="/assets/play.svg" alt=""></button>
-          <button class="media-button" data-action="volume_up" data-repeat aria-label="提高音量" title="提高音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>+</strong></span></button>
-          <button class="media-button" data-action="f11" aria-label="全屏" title="全屏"><img class="icon" src="/assets/maximize-2.svg" alt=""></button>
+          <button class="media-button" data-action="volume_down" data-repeat data-i18n-aria="volumeDown" aria-label="降低音量" title="降低音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>−</strong></span></button>
+          <button class="media-button" data-action="volume_mute" data-i18n-aria="mute" aria-label="静音" title="静音"><img class="icon" src="/assets/volume-x.svg" alt=""></button>
+          <button class="media-button" data-action="media_play_pause" data-i18n-aria="playPause" aria-label="播放或暂停" title="播放或暂停"><img class="icon" src="/assets/play.svg" alt=""></button>
+          <button class="media-button" data-action="volume_up" data-repeat data-i18n-aria="volumeUp" aria-label="提高音量" title="提高音量"><span class="volume-combo"><img class="icon" src="/assets/volume-1.svg" alt=""><strong>+</strong></span></button>
+          <button class="media-button" data-action="f11" data-i18n-aria="fullscreen" aria-label="全屏" title="全屏"><img class="icon" src="/assets/maximize-2.svg" alt=""></button>
         </div>
       </section>
 
-      <section id="view-touch" class="view" aria-label="触控板">
-        <div id="touchpad" class="touchpad" aria-label="单指移动，轻点单击，双指滚动" title="单指移动，轻点单击，双指滚动">
-          <div class="touchpad-center"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span>触控板</span></div>
+      <section id="view-touch" class="view" data-i18n-aria="touchpad" aria-label="触控板">
+        <div id="touchpad" class="touchpad" data-i18n-aria="touchHelp" aria-label="单指移动，轻点单击，双指滚动" title="单指移动，轻点单击，双指滚动">
+          <div class="touchpad-center"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span data-i18n="touchpad">触控板</span></div>
         </div>
         <div class="mouse-buttons">
-          <button class="mouse-button" data-mouse-click="left">左键</button>
-          <button class="mouse-button" data-mouse-click="double">双击</button>
-          <button class="mouse-button" data-mouse-click="right">右键</button>
+          <button class="mouse-button" data-mouse-click="left" data-i18n="leftClick">左键</button>
+          <button class="mouse-button" data-mouse-click="double" data-i18n="doubleClick">双击</button>
+          <button class="mouse-button" data-mouse-click="right" data-i18n="rightClick">右键</button>
         </div>
         <div class="touch-media">
-          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span>返回</span></button>
-          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span>桌面</span></button>
-          <button class="action-button" data-action="media_play_pause"><img class="icon" src="/assets/play.svg" alt=""><span>播放</span></button>
+          <button class="action-button" data-action="escape"><img class="icon" src="/assets/undo-2.svg" alt=""><span data-i18n="back">返回</span></button>
+          <button class="action-button primary" data-action="desktop"><img class="icon" src="/assets/house.svg" alt=""><span data-i18n="desktop">桌面</span></button>
+          <button class="action-button" data-action="media_play_pause"><img class="icon" src="/assets/play.svg" alt=""><span data-i18n="play">播放</span></button>
         </div>
       </section>
 
-      <section id="view-apps" class="view" aria-label="应用">
+      <section id="view-apps" class="view" data-i18n-aria="apps" aria-label="应用">
         <div id="appGrid" class="app-grid"></div>
       </section>
 
-      <section id="view-keyboard" class="view" aria-label="键盘输入">
-        <textarea id="keyboardInput" class="keyboard-input" maxlength="2000" enterkeyhint="send" placeholder="输入文字" autocomplete="off"></textarea>
-        <button id="sendTextButton" class="keyboard-send"><img class="icon" src="/assets/send.svg" alt=""><span>发送</span></button>
+      <section id="view-keyboard" class="view" data-i18n-aria="keyboard" aria-label="键盘输入">
+        <textarea id="keyboardInput" class="keyboard-input" maxlength="2000" enterkeyhint="send" data-i18n-placeholder="typeText" placeholder="输入文字" autocomplete="off"></textarea>
+        <button id="sendTextButton" class="keyboard-send"><img class="icon" src="/assets/send.svg" alt=""><span data-i18n="send">发送</span></button>
         <div class="keyboard-keys">
-          <button data-action="back">退格</button>
-          <button data-action="enter">回车</button>
+          <button data-action="back" data-i18n="backspace">退格</button>
+          <button data-action="enter" data-i18n="enter">回车</button>
           <button data-action="tab">Tab</button>
-          <button id="clearTextButton">清空</button>
+          <button id="clearTextButton" data-i18n="clear">清空</button>
         </div>
       </section>
     </div>
 
-    <nav aria-label="遥控器页面">
-      <button class="tab-button active" data-view="remote"><img class="icon" src="/assets/gamepad-2.svg" alt=""><span>遥控</span></button>
-      <button class="tab-button" data-view="touch"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span>触控</span></button>
-      <button class="tab-button" data-view="apps"><img class="icon" src="/assets/layout-grid.svg" alt=""><span>应用</span></button>
-      <button class="tab-button" data-view="keyboard"><img class="icon" src="/assets/keyboard.svg" alt=""><span>键盘</span></button>
+    <nav data-i18n-aria="remotePages" aria-label="遥控器页面">
+      <button class="tab-button active" data-view="remote"><img class="icon" src="/assets/gamepad-2.svg" alt=""><span data-i18n="remote">遥控</span></button>
+      <button class="tab-button" data-view="touch"><img class="icon" src="/assets/mouse-pointer-2.svg" alt=""><span data-i18n="touch">触控</span></button>
+      <button class="tab-button" data-view="apps"><img class="icon" src="/assets/layout-grid.svg" alt=""><span data-i18n="apps">应用</span></button>
+      <button class="tab-button" data-view="keyboard"><img class="icon" src="/assets/keyboard.svg" alt=""><span data-i18n="keyboard">键盘</span></button>
     </nav>
   </main>
 
   <dialog id="pairDialog">
     <div class="pair-form">
-      <h2>安全配对</h2>
-      <p id="pairHelp" class="pair-help">首次连接需要由 Windows Companion 显示一次性验证码。</p>
-      <input id="deviceName" maxlength="120" autocomplete="name" placeholder="此设备名称">
-      <button id="requestPair" class="primary">请求验证码</button>
+      <h2 data-i18n="securePairing">安全配对</h2>
+      <p id="pairHelp" class="pair-help" data-i18n="firstPair">首次连接需要由 Windows Companion 显示一次性验证码。</p>
+      <input id="deviceName" maxlength="120" autocomplete="name" data-i18n-placeholder="deviceName" placeholder="此设备名称">
+      <button id="requestPair" class="primary" data-i18n="requestCode">请求验证码</button>
       <div id="completePairPane" class="pair-form hidden">
         <input id="pairCode" class="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000">
-        <button id="completePair" class="primary">完成配对</button>
+        <button id="completePair" class="primary" data-i18n="completePairing">完成配对</button>
       </div>
     </div>
   </dialog>
 
   <dialog id="powerDialog">
     <div id="powerMenu">
-      <h2>电源</h2>
+      <h2 data-i18n="power">电源</h2>
       <div class="power-grid">
-        <button class="warning" data-confirm="sleep">待机 (S3)</button>
-        <button class="warning" data-confirm="hibernate">休眠</button>
-        <button class="danger" data-confirm="restart">重启</button>
-        <button class="danger" data-confirm="shutdown">关机</button>
+        <button class="warning" data-confirm="sleep" data-i18n="standby">待机 (S3)</button>
+        <button class="warning" data-confirm="hibernate" data-i18n="hibernate">休眠</button>
+        <button class="danger" data-confirm="restart" data-i18n="restart">重启</button>
+        <button class="danger" data-confirm="shutdown" data-i18n="shutdown">关机</button>
       </div>
-      <div class="dialog-actions"><button id="closePower">取消</button></div>
+      <div class="dialog-actions"><button id="closePower" data-i18n="cancel">取消</button></div>
     </div>
     <div id="confirmPane" class="hidden">
-      <h2 id="confirmTitle">确认操作</h2>
+      <h2 id="confirmTitle" data-i18n="confirmActionTitle">确认操作</h2>
       <p id="confirmText"></p>
       <div class="dialog-actions">
-        <button id="backToPower">返回</button>
-        <button id="confirmAction" class="danger">确认</button>
+        <button id="backToPower" data-i18n="back">返回</button>
+        <button id="confirmAction" class="danger" data-i18n="confirm">确认</button>
       </div>
     </div>
   </dialog>
@@ -416,6 +418,31 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
+    const messages = {
+      zh: { connecting: '正在连接', connected: '已连接', disconnected: '连接断开', powerMenu: '电源菜单', remoteControls: '遥控按键', remotePages: '遥控器页面', up: '向上', down: '向下', left: '向左', right: '向右', volumeDown: '降低音量', volumeUp: '提高音量', mute: '静音', playPause: '播放或暂停', fullscreen: '全屏', back: '返回', desktop: '桌面', close: '关闭', touchpad: '触控板', touchHelp: '单指移动，轻点单击，双指滚动', leftClick: '左键', doubleClick: '双击', rightClick: '右键', play: '播放', typeText: '输入文字', send: '发送', backspace: '退格', enter: '回车', clear: '清空', remote: '遥控', touch: '触控', apps: '应用', keyboard: '键盘', securePairing: '安全配对', firstPair: '首次连接需要由 Windows Companion 显示一次性验证码。', deviceName: '此设备名称', requestCode: '请求验证码', completePairing: '完成配对', power: '电源', standby: '待机 (S3)', hibernate: '休眠', restart: '重启', shutdown: '关机', cancel: '取消', confirm: '确认', confirmActionTitle: '确认操作', credentialExpired: '配对凭据已失效，请重新配对。', requestPairFailed: '无法请求配对', enterCode: seconds => `请在 ${seconds} 秒内输入 Windows Companion 显示的 6 位验证码。`, pairingRequestFailed: '配对请求失败', pairingFailed: '配对失败', pairingSuccess: '配对成功', identityChanged: '检测到 Server Identity 变化，已阻止连接。请确认后重新配对。', openingApp: name => `正在打开${name}`, appOpened: name => `${name}已打开`, desktopShown: '已显示电脑桌面', windowClosed: '已关闭当前窗口', operationFailed: '操作失败', connectionFailed: '连接失败', touchFailed: '触控失败', sendFailed: '发送失败', textSent: '文字已发送', noApps: '暂无应用', appsUnavailable: '应用配置不可用', configWarning: warning => `配置错误，已使用上次设置：${warning}`, appsLoadFailed: '应用列表加载失败', touchConnectionFailed: '触控连接失败', confirmAction: label => `确认${label}`, executesImmediately: label => `${label}会立即执行。` },
+      en: { connecting: 'Connecting', connected: 'Connected', disconnected: 'Disconnected', powerMenu: 'Power menu', remoteControls: 'Remote controls', remotePages: 'Remote pages', up: 'Up', down: 'Down', left: 'Left', right: 'Right', volumeDown: 'Volume down', volumeUp: 'Volume up', mute: 'Mute', playPause: 'Play or pause', fullscreen: 'Fullscreen', back: 'Back', desktop: 'Desktop', close: 'Close', touchpad: 'Touchpad', touchHelp: 'Move with one finger, tap to click, and use two fingers to scroll', leftClick: 'Left click', doubleClick: 'Double click', rightClick: 'Right click', play: 'Play', typeText: 'Type text', send: 'Send', backspace: 'Backspace', enter: 'Enter', clear: 'Clear', remote: 'Remote', touch: 'Touch', apps: 'Apps', keyboard: 'Keyboard', securePairing: 'Secure pairing', firstPair: 'The first connection requires a one-time code shown by Windows Companion.', deviceName: 'Device name', requestCode: 'Request code', completePairing: 'Complete pairing', power: 'Power', standby: 'Standby (S3)', hibernate: 'Hibernate', restart: 'Restart', shutdown: 'Shut down', cancel: 'Cancel', confirm: 'Confirm', confirmActionTitle: 'Confirm action', credentialExpired: 'The pairing credential expired. Pair again.', requestPairFailed: 'Unable to request pairing', enterCode: seconds => `Enter the six-digit code shown by Windows Companion within ${seconds} seconds.`, pairingRequestFailed: 'Pairing request failed', pairingFailed: 'Pairing failed', pairingSuccess: 'Paired successfully', identityChanged: 'The server identity changed, so the connection was blocked. Confirm the PC and pair again.', openingApp: name => `Opening ${name}`, appOpened: name => `${name} opened`, desktopShown: 'PC desktop shown', windowClosed: 'Active window closed', operationFailed: 'Operation failed', connectionFailed: 'Connection failed', touchFailed: 'Touch control failed', sendFailed: 'Send failed', textSent: 'Text sent', noApps: 'No apps', appsUnavailable: 'App configuration unavailable', configWarning: warning => `Configuration error; using the previous settings: ${warning}`, appsLoadFailed: 'Unable to load apps', touchConnectionFailed: 'Touch connection failed', confirmAction: label => `Confirm ${label}`, executesImmediately: label => `${label} will run immediately.` }
+    };
+    let language = localStorage.getItem('phone-remote-language') || (navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en');
+    const t = (key, value) => {
+      const result = messages[language][key];
+      return typeof result === 'function' ? result(value) : (result || key);
+    };
+    function applyLanguage() {
+      document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+      document.title = language === 'zh' ? '客厅遥控' : 'Phone Remote';
+      document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = t(node.dataset.i18n); });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(node => { node.placeholder = t(node.dataset.i18nPlaceholder); });
+      document.querySelectorAll('[data-i18n-aria]').forEach(node => { const value = t(node.dataset.i18nAria); node.setAttribute('aria-label', value); node.title = value; });
+      document.getElementById('languageSelect').value = language;
+    }
+    document.getElementById('languageSelect').addEventListener('change', event => {
+      language = event.target.value;
+      localStorage.setItem('phone-remote-language', language);
+      applyLanguage();
+      setConnection(dot.classList.contains('connected'));
+      appsSignature = '';
+      if (credential) refreshApps(); else renderApps([]);
+    });
     const dot = document.getElementById('dot');
     const statusText = document.getElementById('status');
     const toast = document.getElementById('toast');
@@ -455,9 +482,9 @@
     }
     function setConnection(connected) {
       dot.classList.toggle('connected', connected);
-      statusText.textContent = connected ? '已连接' : '连接断开';
+      statusText.textContent = connected ? t('connected') : t('disconnected');
     }
-    function showPairing(message = '首次连接需要由 Windows Companion 显示一次性验证码。') {
+    function showPairing(message = t('firstPair')) {
       pairHelp.textContent = message;
       completePairPane.classList.add('hidden');
       pairingSessionId = '';
@@ -474,7 +501,7 @@
         if (requestCredential !== credential) return response;
         credential = '';
         localStorage.removeItem('phone-remote-credential');
-        showPairing('配对凭据已失效，请重新配对。');
+        showPairing(t('credentialExpired'));
       }
       return response;
     }
@@ -482,12 +509,12 @@
       try {
         const response = await fetch('/api/v1/pair/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || '无法请求配对');
+        if (!response.ok || !data.ok) throw new Error(data.error || t('requestPairFailed'));
         pairingSessionId = data.sessionId;
-        pairHelp.textContent = `请在 ${data.expiresIn} 秒内输入 Windows Companion 显示的 6 位验证码。`;
+        pairHelp.textContent = t('enterCode', data.expiresIn);
         completePairPane.classList.remove('hidden');
         pairCode.focus({ preventScroll: true });
-      } catch (error) { showToast(error.message || '配对请求失败', 2200); }
+      } catch (error) { showToast(error.message || t('pairingRequestFailed'), 2200); }
     }
     async function completePairing() {
       try {
@@ -496,14 +523,14 @@
           body: JSON.stringify({ sessionId: pairingSessionId, code: pairCode.value, deviceName: deviceName.value || navigator.userAgent.slice(0, 80), platform: 'web' })
         });
         const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || '配对失败');
+        if (!response.ok || !data.ok) throw new Error(data.error || t('pairingFailed'));
         credential = data.credential; pairedServerId = data.serverId; identityFingerprint = data.identityFingerprint;
         localStorage.setItem('phone-remote-credential', credential);
         localStorage.setItem('phone-remote-server-id', pairedServerId);
         localStorage.setItem('phone-remote-identity', identityFingerprint);
         pairingSessionId = '';
-        pairCode.value = ''; pairDialog.close(); showToast('配对成功'); refresh(); refreshApps();
-      } catch (error) { showToast(error.message || '配对失败', 2200); }
+        pairCode.value = ''; pairDialog.close(); showToast(t('pairingSuccess')); refresh(); refreshApps();
+      } catch (error) { showToast(error.message || t('pairingFailed'), 2200); }
     }
     async function verifyServerIdentity() {
       try {
@@ -512,7 +539,7 @@
         if (pairedServerId && (data.serverId !== pairedServerId || data.identityFingerprint !== identityFingerprint)) {
           credential = '';
           localStorage.removeItem('phone-remote-credential');
-          showPairing('检测到 Server Identity 变化，已阻止连接。请确认后重新配对。');
+          showPairing(t('identityChanged'));
           return false;
         }
         if (!credential) {
@@ -526,7 +553,7 @@
       const appName = button?.dataset.appName;
       const givesFeedback = action === 'desktop' || action === 'close_active' || action.startsWith('app:');
       if (button && givesFeedback) button.classList.add('busy');
-      if (appName) showToast(`正在打开${appName}`);
+      if (appName) showToast(t('openingApp', appName));
       try {
         const isPower = ['sleep', 'hibernate', 'restart', 'shutdown'].includes(action);
         const appId = action.startsWith('app:') ? action.slice(4) : '';
@@ -537,14 +564,14 @@
           body: JSON.stringify(appId ? {} : { action })
         });
         const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || '操作失败');
+        if (!response.ok || !data.ok) throw new Error(data.error || t('operationFailed'));
         setConnection(true);
-        if (appName) showToast(`${appName}已打开`);
-        if (action === 'desktop') showToast('已显示电脑桌面');
-        if (action === 'close_active') showToast('已关闭当前窗口');
+        if (appName) showToast(t('appOpened', appName));
+        if (action === 'desktop') showToast(t('desktopShown'));
+        if (action === 'close_active') showToast(t('windowClosed'));
       } catch (error) {
         setConnection(false);
-        showToast(error.message || '连接失败', 1800);
+        showToast(error.message || t('connectionFailed'), 1800);
       } finally {
         if (button) button.classList.remove('busy');
       }
@@ -556,12 +583,12 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!response.ok) throw new Error('触控失败');
+        if (!response.ok) throw new Error(t('touchFailed'));
         setConnection(true);
         return true;
       } catch (error) {
         setConnection(false);
-        if (!quiet) showToast(error.message || '连接失败', 1800);
+        if (!quiet) showToast(error.message || t('connectionFailed'), 1800);
         return false;
       }
     }
@@ -579,13 +606,13 @@
           body: JSON.stringify({ text: value })
         });
         const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || '发送失败');
+        if (!response.ok || !data.ok) throw new Error(data.error || t('sendFailed'));
         keyboardInput.value = '';
         setConnection(true);
-        showToast('文字已发送');
+        showToast(t('textSent'));
       } catch (error) {
         setConnection(false);
-        showToast(error.message || '连接失败', 1800);
+        showToast(error.message || t('connectionFailed'), 1800);
       } finally {
         sendTextButton.classList.remove('busy');
         keyboardInput.focus();
@@ -606,7 +633,7 @@
       if (!apps.length) {
         const empty = document.createElement('div');
         empty.className = 'app-empty';
-        empty.textContent = '暂无应用';
+        empty.textContent = t('noApps');
         appGrid.append(empty);
         return;
       }
@@ -639,19 +666,19 @@
       try {
         const response = await apiFetch('/api/v1/apps', { cache: 'no-store' });
         const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || '应用配置不可用');
+        if (!response.ok || !data.ok) throw new Error(data.error || t('appsUnavailable'));
         const signature = JSON.stringify(data.apps);
         if (signature !== appsSignature) {
           renderApps(data.apps);
           appsSignature = signature;
         }
         if (data.warning && data.warning !== lastConfigWarning) {
-          showToast(`配置错误，已使用上次设置：${data.warning}`, 2600);
+          showToast(t('configWarning', data.warning), 2600);
         }
         lastConfigWarning = data.warning || '';
       } catch (error) {
         if (!appsSignature) renderApps([]);
-        showToast(error.message || '应用列表加载失败', 2000);
+        showToast(error.message || t('appsLoadFailed'), 2000);
       }
     }
     function switchView(name) {
@@ -703,8 +730,8 @@
       if (button.dataset.confirm) {
         pendingAction = button.dataset.confirm;
         const label = button.textContent.trim();
-        confirmTitle.textContent = `确认${label}`;
-        confirmText.textContent = `${label}会立即执行。`;
+        confirmTitle.textContent = t('confirmAction', label);
+        confirmText.textContent = t('executesImmediately', label);
         powerMenu.classList.add('hidden');
         confirmPane.classList.remove('hidden');
       }
@@ -802,7 +829,7 @@
         const now = Date.now();
         if (!ok && now - pointerTraffic.lastFailureToast > 2000) {
           pointerTraffic.lastFailureToast = now;
-          showToast('触控连接失败', 1800);
+          showToast(t('touchConnectionFailed'), 1800);
         }
       }).finally(() => {
         pointerTraffic.inFlight -= 1;
@@ -906,6 +933,7 @@
         keepAwake();
       }
     });
+    applyLanguage();
     const savedView = localStorage.getItem('settop-view');
     switchView(['remote', 'touch', 'apps', 'keyboard'].includes(savedView) ? savedView : 'remote');
     verifyServerIdentity().then(valid => { if (valid) { refresh(); refreshApps(); } });

@@ -18,10 +18,12 @@ from . import API_VERSION, __version__
 from .auth import CredentialStore
 from .catalog import ApplicationCatalog
 from .config import ConfigStore
+from .localization import UiLanguageStore
 from .network import (
     NetworkDiagnostics,
     is_loopback,
     is_private_lan,
+    set_start_with_windows,
 )
 from .pairing import PairingError, PairingManager, PairingRateLimited
 from .paths import RuntimePaths
@@ -61,6 +63,8 @@ class ApiContext:
     logger: logging.Logger
     port: int
     web_port: int | None = None
+    startup_command: tuple[str, ...] = ()
+    ui_language: UiLanguageStore | None = None
     admin_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     _profile_lock: threading.Lock = field(default_factory=threading.Lock)
     _profile_checked_at: float = 0.0
@@ -294,6 +298,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                 "networkProfiles": [item.__dict__ for item in context.network.profiles()],
                 "firewall": context.network.firewall_status(),
                 "startWithWindows": context.network.start_with_windows(),
+                "uiLanguage": context.ui_language.get() if context.ui_language else "en",
                 "wol": context.network.wol_diagnostics(),
                 "clients": context.credentials.list_clients(),
                 "apps": context.config.get()["apps"],
@@ -310,6 +315,20 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             }
         if method == "GET" and path == "/api/v1/admin/clients":
             return {"ok": True, "clients": context.credentials.list_clients()}
+        if method == "POST" and path == "/api/v1/admin/runtime/startup":
+            data = self._read_json()
+            enabled = data.get("enabled")
+            if not isinstance(enabled, bool):
+                raise ValueError("enabled must be true or false")
+            if not context.startup_command:
+                raise ValueError("startup command is unavailable")
+            set_start_with_windows(context.startup_command, enabled)
+            return {"ok": True, "enabled": enabled}
+        if method == "POST" and path == "/api/v1/admin/runtime/language":
+            data = self._read_json()
+            if context.ui_language is None:
+                raise ValueError("UI language preference is unavailable")
+            return {"ok": True, "language": context.ui_language.set(data.get("language"))}
         if method == "POST" and path == "/api/v1/admin/clients/revoke-all":
             return {"ok": True, "revoked": context.credentials.revoke_all()}
         if method == "DELETE" and path.startswith("/api/v1/admin/clients/"):

@@ -18,6 +18,7 @@ from .auth import CredentialStore
 from .catalog import ApplicationCatalog
 from .config import DEFAULT_CONFIG, ConfigStore, validate_config
 from .discovery import DiscoveryPublisher
+from .localization import UiLanguageStore
 from .logging_setup import configure_logging
 from .network import NetworkDiagnostics, set_start_with_windows
 from .pairing import PairingManager
@@ -57,7 +58,11 @@ class ServerRuntime:
         self.config.initialize()
         self.config.get()
         self.credentials = CredentialStore(self.state)
-        self.pairing_display = PairingDisplay(print_codes=args.print_pair_code or args.no_tray)
+        self.ui_language = UiLanguageStore(self.paths.data_root / "ui-language.txt")
+        self.pairing_display = PairingDisplay(
+            print_codes=args.print_pair_code or args.no_tray,
+            ui_language=self.ui_language,
+        )
         self.pairing = PairingManager(self.credentials, notifier=self.pairing_display)
         self.launcher = AppLauncher(self.config)
         self.control = ControlService(WindowsBackend(), self.launcher)
@@ -77,6 +82,11 @@ class ServerRuntime:
         except Exception:
             self.logger.exception("initial application discovery failed")
         self.network = NetworkDiagnostics()
+        self.startup_command = tuple(
+            [sys.executable]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "phone_remote"]
+        )
         self.context = ApiContext(
             identity=self.identity,
             paths=self.paths,
@@ -89,6 +99,8 @@ class ServerRuntime:
             logger=self.logger,
             port=args.port,
             web_port=args.port if args.insecure_http else args.web_port,
+            startup_command=self.startup_command,
+            ui_language=self.ui_language,
         )
         self.http = PhoneRemoteServer((args.host, args.port), self.context)
         self.web_http: PhoneRemoteServer | None = None
@@ -143,9 +155,8 @@ class ServerRuntime:
             self.context,
             self.pairing_display,
             self.stop,
-            [sys.executable]
-            if getattr(sys, "frozen", False)
-            else [sys.executable, "-m", "phone_remote"],
+            self.startup_command,
+            self.ui_language,
         )
         try:
             tray.run()

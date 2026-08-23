@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../application/phone_remote_controller.dart';
+import '../localization.dart';
 import '../models/device.dart';
 import '../services/pointer_move_dispatcher.dart';
 import '../services/touchpad_settings.dart';
@@ -107,9 +108,9 @@ class _RemoteShellState extends State<RemoteShell> {
             Text(widget.demo ? 'Phone Remote' : device?.name ?? 'Phone Remote'),
         actions: <Widget>[
           if (widget.demo)
-            const Padding(
-              padding: EdgeInsets.only(right: 16),
-              child: Chip(label: Text('Demo')),
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Chip(label: Text(context.tr('Demo'))),
             )
           else if (widget.controller != null)
             Padding(
@@ -122,26 +123,26 @@ class _RemoteShellState extends State<RemoteShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const <NavigationDestination>[
+        destinations: <NavigationDestination>[
           NavigationDestination(
-            icon: Icon(Icons.touch_app_outlined),
-            selectedIcon: Icon(Icons.touch_app_rounded),
-            label: 'Remote',
+            icon: const Icon(Icons.touch_app_outlined),
+            selectedIcon: const Icon(Icons.touch_app_rounded),
+            label: context.tr('Remote'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.apps_outlined),
-            selectedIcon: Icon(Icons.apps_rounded),
-            label: 'Apps',
+            icon: const Icon(Icons.apps_outlined),
+            selectedIcon: const Icon(Icons.apps_rounded),
+            label: context.tr('Apps'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.devices_outlined),
-            selectedIcon: Icon(Icons.devices_rounded),
-            label: 'Devices',
+            icon: const Icon(Icons.devices_outlined),
+            selectedIcon: const Icon(Icons.devices_rounded),
+            label: context.tr('Devices'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
-            label: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings_rounded),
+            label: context.tr('Settings'),
           ),
         ],
       ),
@@ -158,37 +159,37 @@ class _ConnectionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, icon) = switch (controller.connectionPhase) {
       RemoteConnectionPhase.connected => (
-          'Online',
+          context.tr('Online'),
           Colors.green,
           Icons.check_circle,
         ),
       RemoteConnectionPhase.connecting => (
-          'Connecting',
+          context.tr('Connecting'),
           Colors.orange,
           Icons.sync,
         ),
       RemoteConnectionPhase.waking => (
-          'Waking',
+          context.tr('Waking'),
           Colors.orange,
           Icons.power_settings_new,
         ),
       RemoteConnectionPhase.identityMismatch => (
-          'Identity alert',
+          context.tr('Identity alert'),
           Colors.red,
           Icons.gpp_bad,
         ),
       RemoteConnectionPhase.unauthorized => (
-          'Pair again',
+          context.tr('Pair again'),
           Colors.red,
           Icons.lock_reset,
         ),
       RemoteConnectionPhase.offline => (
-          'Offline',
+          context.tr('Offline'),
           Colors.grey,
           Icons.cloud_off,
         ),
       RemoteConnectionPhase.disconnected => (
-          'Disconnected',
+          context.tr('Disconnected'),
           Colors.grey,
           Icons.link_off,
         ),
@@ -300,87 +301,87 @@ class _RemotePageState extends State<_RemotePage> {
   Widget build(BuildContext context) {
     final quickControls = <Widget>[
       _QuickControl(
-        label: 'Back',
+        label: context.tr('Back'),
         icon: Icons.arrow_back,
         onTap: () => _invoke(
-          'Back',
+          context.tr('Back'),
           (controller) => controller.sendAction('escape'),
         ),
       ),
       _QuickControl(
-        label: 'Keyboard',
+        label: context.tr('Keyboard'),
         icon: Icons.keyboard,
         onTap: () => _openKeyboard(context),
       ),
       _QuickControl(
-        label: 'Fullscreen',
+        label: context.tr('Fullscreen'),
         icon: Icons.fullscreen,
         onTap: () => _invoke(
-          'Fullscreen',
+          context.tr('Fullscreen'),
           (controller) => controller.sendAction('f11'),
         ),
       ),
       _QuickControl(
-        label: 'Desktop',
+        label: context.tr('Desktop'),
         icon: Icons.desktop_windows_outlined,
         onTap: () => _invoke(
-          'Desktop',
+          context.tr('Desktop'),
           (controller) => controller.sendAction('desktop'),
         ),
       ),
       _QuickControl(
-        label: 'Close active window',
+        label: context.tr('Close active window'),
         icon: Icons.close,
         onTap: () => _invoke(
-          'Close active window',
+          context.tr('Close active window'),
           (controller) => controller.sendAction('close_active'),
         ),
       ),
       _QuickControl(
-        label: 'Volume down',
+        label: context.tr('Volume down'),
         icon: Icons.volume_down,
         onTap: () => _invoke(
-          'Volume down',
+          context.tr('Volume down'),
           (controller) => controller.sendAction('volume_down'),
         ),
       ),
       _QuickControl(
-        label: 'Mute',
+        label: context.tr('Mute'),
         icon: Icons.volume_off,
         onTap: () => _invoke(
-          'Mute',
+          context.tr('Mute'),
           (controller) => controller.sendAction('volume_mute'),
         ),
       ),
       _QuickControl(
-        label: 'Volume up',
+        label: context.tr('Volume up'),
         icon: Icons.volume_up,
         onTap: () => _invoke(
-          'Volume up',
+          context.tr('Volume up'),
           (controller) => controller.sendAction('volume_up'),
         ),
       ),
       _QuickControl(
-        label: 'Previous',
+        label: context.tr('Previous'),
         icon: Icons.skip_previous,
         onTap: () => _invoke(
-          'Previous',
+          context.tr('Previous'),
           (controller) => controller.sendAction('media_previous'),
         ),
       ),
       _QuickControl(
-        label: 'Play / Pause',
+        label: context.tr('Play / Pause'),
         icon: Icons.play_arrow,
         onTap: () => _invoke(
-          'Play / Pause',
+          context.tr('Play / Pause'),
           (controller) => controller.sendAction('media_play_pause'),
         ),
       ),
       _QuickControl(
-        label: 'Next',
+        label: context.tr('Next'),
         icon: Icons.skip_next,
         onTap: () => _invoke(
-          'Next',
+          context.tr('Next'),
           (controller) => controller.sendAction('media_next'),
         ),
       ),
@@ -394,16 +395,16 @@ class _RemotePageState extends State<_RemotePage> {
           if (!widget.demo && widget.controller != null)
             _ConnectionBanner(controller: widget.controller!),
           SegmentedButton<bool>(
-            segments: const <ButtonSegment<bool>>[
+            segments: <ButtonSegment<bool>>[
               ButtonSegment<bool>(
                 value: true,
-                icon: Icon(Icons.touch_app_rounded),
-                label: Text('Touchpad'),
+                icon: const Icon(Icons.touch_app_rounded),
+                label: Text(context.tr('Touchpad')),
               ),
               ButtonSegment<bool>(
                 value: false,
-                icon: Icon(Icons.gamepad_rounded),
-                label: Text('D-pad'),
+                icon: const Icon(Icons.gamepad_rounded),
+                label: Text(context.tr('D-pad')),
               ),
             ],
             selected: <bool>{_touchpad},
@@ -415,9 +416,9 @@ class _RemotePageState extends State<_RemotePage> {
           Expanded(
             child: _touchpad
                 ? _TouchpadSurface(
-                    status: _lastAction,
+                    status: context.tr(_lastAction),
                     onMove: (delta) {
-                      _setLastAction('Pointer move');
+                      _setLastAction(context.tr('Pointer move'));
                       if (!widget.demo &&
                           (widget.controller?.connected ?? false)) {
                         final sensitivity =
@@ -429,7 +430,7 @@ class _RemotePageState extends State<_RemotePage> {
                       }
                     },
                     onWheel: (delta) {
-                      _setLastAction('Scroll');
+                      _setLastAction(context.tr('Scroll'));
                       if (!widget.demo &&
                           (widget.controller?.connected ?? false)) {
                         _wheel.add(
@@ -439,16 +440,16 @@ class _RemotePageState extends State<_RemotePage> {
                       }
                     },
                     onLeftClick: () => _invoke(
-                      'Left click',
+                      context.tr('Left click'),
                       (controller) => controller.sendMouseClick(),
                     ),
                     onRightClick: () => _invoke(
-                      'Right click',
+                      context.tr('Right click'),
                       (controller) =>
                           controller.sendMouseClick(button: 'right'),
                     ),
                     onDoubleClick: () => _invoke(
-                      'Double click',
+                      context.tr('Double click'),
                       (controller) => controller.sendMouseDoubleClick(),
                     ),
                   )
@@ -497,8 +498,8 @@ class _RemotePageState extends State<_RemotePage> {
       builder: (sheetContext) => _KeyboardSheet(
         onAction: (label, action) =>
             _invoke(label, (controller) => controller.sendAction(action)),
-        onSend: (text) =>
-            _invoke('Text sent', (controller) => controller.sendText(text)),
+        onSend: (text) => _invoke(
+            context.tr('Text sent'), (controller) => controller.sendText(text)),
       ),
     );
   }
@@ -554,19 +555,19 @@ class _KeyboardSheetState extends State<_KeyboardSheet> {
             maxLength: 2000,
             minLines: 1,
             maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Text Input',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: context.tr('Text Input'),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
           Row(
             children: <Widget>[
-              for (final item in const <(String, String, IconData)>[
-                ('Enter', 'enter', Icons.keyboard_return),
-                ('Tab', 'tab', Icons.keyboard_tab),
-                ('Escape', 'escape', Icons.close),
-                ('Backspace', 'back', Icons.backspace_outlined),
+              for (final item in <(String, String, IconData)>[
+                (context.tr('Enter'), 'enter', Icons.keyboard_return),
+                (context.tr('Tab'), 'tab', Icons.keyboard_tab),
+                (context.tr('Escape'), 'escape', Icons.close),
+                (context.tr('Backspace'), 'back', Icons.backspace_outlined),
               ])
                 Expanded(
                   child: Padding(
@@ -595,7 +596,7 @@ class _KeyboardSheetState extends State<_KeyboardSheet> {
             child: FilledButton.icon(
               onPressed: _sending ? null : _send,
               icon: const Icon(Icons.send),
-              label: const Text('Send'),
+              label: Text(context.tr('Send')),
             ),
           ),
         ],
@@ -640,15 +641,16 @@ class _ConnectionBanner extends StatelessWidget {
               child: Text(
                 busy
                     ? controller.connectionPhase == RemoteConnectionPhase.waking
-                        ? 'Sending Wake on LAN…'
-                        : 'Connecting securely…'
-                    : controller.connectionError ?? 'Not connected.',
+                        ? context.tr('Sending Wake on LAN…')
+                        : context.tr('Connecting securely…')
+                    : controller.connectionError ??
+                        context.tr('Not connected.'),
               ),
             ),
             if (!busy && !identityAlert)
               TextButton(
                 onPressed: controller.reconnect,
-                child: const Text('Retry'),
+                child: Text(context.tr('Retry')),
               ),
           ],
         ),
@@ -748,8 +750,9 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label:
-          'Touchpad. One finger moves. Tap clicks. Two-finger tap right-clicks. Two-finger drag scrolls.',
+      label: context.tr(
+        'Touchpad. One finger moves. Tap clicks. Two-finger tap right-clicks. Two-finger drag scrolls.',
+      ),
       child: RawGestureDetector(
         key: const ValueKey<String>('touchpad-surface'),
         behavior: HitTestBehavior.opaque,
@@ -776,7 +779,7 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
             ),
             child: Center(
               child: Text(
-                'Touchpad\n\n${widget.status}',
+                '${context.tr('Touchpad')}\n\n${widget.status}',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
@@ -800,28 +803,28 @@ class _Dpad extends StatelessWidget {
       children: <Widget>[
         _RoundControl(
           icon: Icons.keyboard_arrow_up,
-          onTap: () => onAction('Up', 'up'),
+          onTap: () => onAction(context.tr('Up'), 'up'),
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             _RoundControl(
               icon: Icons.keyboard_arrow_left,
-              onTap: () => onAction('Left', 'left'),
+              onTap: () => onAction(context.tr('Left'), 'left'),
             ),
             _RoundControl(
               icon: Icons.circle_outlined,
-              onTap: () => onAction('Enter', 'enter'),
+              onTap: () => onAction(context.tr('Enter'), 'enter'),
             ),
             _RoundControl(
               icon: Icons.keyboard_arrow_right,
-              onTap: () => onAction('Right', 'right'),
+              onTap: () => onAction(context.tr('Right'), 'right'),
             ),
           ],
         ),
         _RoundControl(
           icon: Icons.keyboard_arrow_down,
-          onTap: () => onAction('Down', 'down'),
+          onTap: () => onAction(context.tr('Down'), 'down'),
         ),
       ],
     );
@@ -968,11 +971,11 @@ class _AppsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (demo) {
-      const apps = <(String, IconData)>[
+      final apps = <(String, IconData)>[
         ('Steam', Icons.sports_esports_rounded),
-        ('Browser', Icons.public_rounded),
-        ('Music', Icons.music_note_rounded),
-        ('Movies', Icons.movie_rounded),
+        (context.tr('Browser'), Icons.public_rounded),
+        (context.tr('Music'), Icons.music_note_rounded),
+        (context.tr('Movies'), Icons.movie_rounded),
       ];
       return GridView.count(
         padding: const EdgeInsets.all(24),
@@ -986,7 +989,12 @@ class _AppsPage extends StatelessWidget {
               icon: app.$2,
               available: true,
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${app.$1} launched in Demo')),
+                SnackBar(
+                    content: Text(
+                  Localizations.localeOf(context).languageCode == 'zh'
+                      ? '演示模式已启动 ${app.$1}'
+                      : '${app.$1} launched in Demo',
+                )),
               ),
             ),
         ],
@@ -995,12 +1003,12 @@ class _AppsPage extends StatelessWidget {
     final current = controller;
     final apps = current?.apps ?? const [];
     if (current == null || !current.connected) {
-      return const Center(
-          child: Text('Connect to a PC to load approved apps.'));
+      return Center(
+          child: Text(context.tr('Connect to a PC to load approved apps.')));
     }
     if (apps.isEmpty) {
-      return const Center(
-          child: Text('No approved Windows apps are configured.'));
+      return Center(
+          child: Text(context.tr('No approved Windows apps are configured.')));
     }
     return GridView.count(
       padding: const EdgeInsets.all(24),
@@ -1029,7 +1037,12 @@ class _AppsPage extends StatelessWidget {
       await controller.launchApp(id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$name launched')),
+          SnackBar(
+              content: Text(
+            Localizations.localeOf(context).languageCode == 'zh'
+                ? '$name 已启动'
+                : '$name launched',
+          )),
         );
       }
     } catch (error) {
@@ -1083,7 +1096,8 @@ class _AppCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(name),
             if (!available)
-              const Text('Unavailable', style: TextStyle(color: Colors.grey)),
+              Text(context.tr('Unavailable'),
+                  style: const TextStyle(color: Colors.grey)),
           ],
         ),
       ),
@@ -1100,11 +1114,11 @@ class _DevicesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (demo) {
-      return const ListTile(
-        leading: CircleAvatar(child: Icon(Icons.computer_rounded)),
-        title: Text('Living Room PC'),
-        subtitle: Text('Demo • Online'),
-        trailing: Icon(Icons.star_rounded),
+      return ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.computer_rounded)),
+        title: Text(context.tr('Living Room PC')),
+        subtitle: Text('${context.tr('Demo')} • ${context.tr('Online')}'),
+        trailing: const Icon(Icons.star_rounded),
       );
     }
     final devices = controller?.devices ?? const <Device>[];
@@ -1120,11 +1134,13 @@ class _DevicesPage extends StatelessWidget {
               title: Text(device.name),
               subtitle: Text(
                 device.id == selectedId && (controller?.connected ?? false)
-                    ? '${device.host}:${device.port} • Online'
-                    : '${device.host}:${device.port} • Saved securely',
+                    ? '${device.host}:${device.port} • ${context.tr('Online')}'
+                    : '${device.host}:${device.port} • ${context.tr('Saved securely')}',
               ),
               trailing: IconButton(
-                tooltip: device.favorite ? 'Remove favorite' : 'Make favorite',
+                tooltip: device.favorite
+                    ? context.tr('Remove favorite')
+                    : context.tr('Make favorite'),
                 onPressed: () => controller?.toggleFavorite(device),
                 icon: Icon(
                   device.favorite
@@ -1151,7 +1167,7 @@ class _DevicesPage extends StatelessWidget {
             }
           },
           icon: const Icon(Icons.add_rounded),
-          label: const Text('Add PC'),
+          label: Text(context.tr('Add PC')),
         ),
       ],
     );
@@ -1161,18 +1177,20 @@ class _DevicesPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Forget this PC?'),
+        title: Text(context.tr('Forget this PC?')),
         content: Text(
-          '${device.name} and its local credential will be removed from this phone.',
+          Localizations.localeOf(context).languageCode == 'zh'
+              ? '将从此手机中移除 ${device.name} 及其本地凭据。'
+              : '${device.name} and its local credential will be removed from this phone.',
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.tr('Cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Forget'),
+            child: Text(context.tr('Forget')),
           ),
         ],
       ),
@@ -1203,46 +1221,45 @@ class _SettingsPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
-        const ListTile(
-          leading: Icon(Icons.security_rounded),
-          title: Text('Local and private'),
+        ListTile(
+          leading: const Icon(Icons.security_rounded),
+          title: Text(context.tr('Local and private')),
           subtitle: Text(
-            'No cloud account, analytics, ads, or keyboard content collection.',
+            context.tr(
+                'No cloud account, analytics, ads, or keyboard content collection.'),
           ),
         ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.settings_input_antenna_rounded),
-          title: const Text('Wake on LAN'),
-          subtitle: const Text('Wake this PC only when you tap here.'),
+          title: Text(context.tr('Wake on LAN')),
           onTap: () => _wake(context),
         ),
         ListTile(
           leading: const Icon(Icons.bedtime_outlined),
-          title: const Text('Standby (S3)'),
-          subtitle: const Text(
-              'Low-power standby; Windows hardware decides the supported state.'),
-          onTap: () => _power(context, 'sleep', 'Standby'),
+          title: Text(context.tr('Standby (S3)')),
+          onTap: () => _power(context, 'sleep', context.tr('Standby')),
         ),
         ListTile(
           leading: const Icon(Icons.pause_circle_outline),
-          title: const Text('Hibernate'),
-          onTap: () => _power(context, 'hibernate', 'Hibernate'),
+          title: Text(context.tr('Hibernate')),
+          onTap: () => _power(context, 'hibernate', context.tr('Hibernate')),
         ),
         ListTile(
           leading: const Icon(Icons.restart_alt),
-          title: const Text('Restart'),
-          onTap: () => _confirmPower(context, 'restart', 'Restart'),
+          title: Text(context.tr('Restart')),
+          onTap: () => _confirmPower(context, 'restart', context.tr('Restart')),
         ),
         ListTile(
           leading: const Icon(Icons.power_settings_new),
-          title: const Text('Shut down'),
-          onTap: () => _confirmPower(context, 'shutdown', 'Shut down'),
+          title: Text(context.tr('Shut down')),
+          onTap: () =>
+              _confirmPower(context, 'shutdown', context.tr('Shut down')),
         ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.mouse_outlined),
-          title: const Text('Pointer sensitivity'),
+          title: Text(context.tr('Pointer sensitivity')),
           subtitle: Slider(
             value: touchpadSettings.pointerSensitivity,
             min: TouchpadSettings.minimumSensitivity,
@@ -1260,7 +1277,7 @@ class _SettingsPage extends StatelessWidget {
         ),
         ListTile(
           leading: const Icon(Icons.swap_vert_rounded),
-          title: const Text('Scroll sensitivity'),
+          title: Text(context.tr('Scroll sensitivity')),
           subtitle: Slider(
             value: touchpadSettings.scrollSensitivity,
             min: TouchpadSettings.minimumSensitivity,
@@ -1284,13 +1301,33 @@ class _SettingsPage extends StatelessWidget {
               onTouchpadSettingsChangeEnd();
             },
             icon: const Icon(Icons.restore_rounded),
-            label: const Text('Reset touchpad settings'),
+            label: Text(context.tr('Reset touchpad settings')),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.language_rounded),
+          title: Text(context.tr('Language')),
+          subtitle: Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              segments: <ButtonSegment<String>>[
+                ButtonSegment<String>(
+                    value: 'zh', label: Text(context.tr('Chinese'))),
+                ButtonSegment<String>(
+                    value: 'en', label: Text(context.tr('English'))),
+              ],
+              selected: <String>{Localizations.localeOf(context).languageCode},
+              onSelectionChanged: (selection) =>
+                  AppLanguageScope.maybeOf(context)
+                      ?.onLocaleChanged(Locale(selection.single)),
+            ),
           ),
         ),
         const Divider(),
         const ListTile(
           leading: Icon(Icons.info_outline_rounded),
-          title: Text('Phone Remote 1.2.0'),
+          title: Text('Phone Remote 1.3.0'),
           subtitle: Text('Mobile API v1'),
         ),
       ],
@@ -1300,7 +1337,7 @@ class _SettingsPage extends StatelessWidget {
   Future<void> _wake(BuildContext context) async {
     if (demo) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wake on LAN simulated in Demo')),
+        SnackBar(content: Text(context.tr('Wake on LAN simulated in Demo'))),
       );
       return;
     }
@@ -1308,7 +1345,7 @@ class _SettingsPage extends StatelessWidget {
       await controller?.wakeAndConnect();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('PC connection is ready')),
+          SnackBar(content: Text(context.tr('PC connection is ready'))),
         );
       }
     } catch (error) {
@@ -1328,12 +1365,17 @@ class _SettingsPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('$label this PC?'),
-        content: const Text('Unsaved work on the Windows PC may be lost.'),
+        title: Text(
+          Localizations.localeOf(context).languageCode == 'zh'
+              ? '确认$label这台电脑？'
+              : '$label this PC?',
+        ),
+        content:
+            Text(context.tr('Unsaved work on the Windows PC may be lost.')),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.tr('Cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -1354,7 +1396,12 @@ class _SettingsPage extends StatelessWidget {
   ) async {
     if (demo) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label simulated in Demo')),
+        SnackBar(
+            content: Text(
+          Localizations.localeOf(context).languageCode == 'zh'
+              ? '演示模式已模拟$label'
+              : '$label simulated in Demo',
+        )),
       );
       return;
     }
@@ -1362,7 +1409,12 @@ class _SettingsPage extends StatelessWidget {
       await controller?.sendPowerAction(action);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$label command sent')),
+          SnackBar(
+              content: Text(
+            Localizations.localeOf(context).languageCode == 'zh'
+                ? '$label命令已发送'
+                : '$label command sent',
+          )),
         );
       }
     } catch (error) {
