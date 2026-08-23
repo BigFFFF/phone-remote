@@ -1,7 +1,17 @@
 # Phone Remote
 
-Phone Remote 是一个在局域网内控制 Windows PC 的项目，包含 Windows Companion、原生
-Flutter 手机端和浏览器备用遥控器。
+简体中文 | [English](README_EN.md)
+
+## 软件介绍
+
+Phone Remote 是一套面向可信局域网的 Windows 远程控制工具，由 Windows Companion、
+Flutter 手机 App 和免安装的 Web Remote 组成。它可以把手机、平板或浏览器变成电脑的
+触控板、键盘、方向键、媒体遥控器和应用启动器，并支持待机、休眠、重启、关机以及
+Wake on LAN 等常用控制。
+
+它适合在沙发或床上控制电脑、客厅影音播放、演示翻页、远距离启动 Steam 等应用，以及
+不方便直接使用鼠标键盘时的日常操作。所有控制都在本地网络内完成，无需云端账号，也
+无需把电脑暴露到互联网。
 
 ## 下载正式版
 
