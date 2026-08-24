@@ -1,6 +1,6 @@
 # Release status
 
-Status as of 2026-08-23: GitHub `v1.3.0` is published with a signed Android APK and an unsigned
+Status as of 2026-08-25: GitHub `v1.4.0` is published with a signed Android APK and an unsigned
 Windows installer.
 
 ## Ready
