@@ -22,7 +22,7 @@ paths:
       security: []
       responses:
         "200":
-          description: Public server identity and compatibility information.
+          description: Public server identity and protocol-version information.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ServerInfo" }
@@ -276,8 +276,8 @@ components:
           required: [type, dx, dy]
           properties:
             type: { const: move }
-            dx: { type: number }
-            dy: { type: number }
+            dx: { type: number, description: "Clamped to the range -120 through 120." }
+            dy: { type: number, description: "Clamped to the range -120 through 120." }
         - type: object
           additionalProperties: false
           required: [type]
@@ -294,7 +294,7 @@ components:
           required: [type, delta]
           properties:
             type: { const: wheel }
-            delta: { type: number }
+            delta: { type: number, description: "Clamped to the range -480 through 480." }
     Success:
       type: object
       required: [ok, message]
@@ -309,7 +309,7 @@ components:
         error: { type: string }
   responses:
     ActionAccepted:
-      description: The validated action was accepted and executed in receive order.
+      description: The validated action was accepted and executed by its input channel.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Success" }

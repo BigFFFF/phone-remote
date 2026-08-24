@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from phone_remote.app_launcher import AppLauncher
-from phone_remote.config import ConfigStore, migrate_config, validate_config
+from phone_remote.config import ConfigStore, validate_config
 from phone_remote.windows_control import (
     MAX_TEXT_LENGTH,
     ControlService,
@@ -129,15 +129,13 @@ def test_invalid_config_is_rejected(valid_config: dict, mutate, message: str) ->
         validate_config(valid_config)
 
 
-def test_flat_version_one_config_is_migrated(valid_config: dict) -> None:
+def test_flat_version_one_config_is_rejected(valid_config: dict) -> None:
     app = valid_config["apps"][1]
     app.pop("launch")
     app["program"] = str(Path(valid_config["browsers"]["edge"]["path"]).with_name("app.exe"))
     app["args"] = ["--safe"]
-    migrated = migrate_config(valid_config)
-    assert migrated["apps"][1]["launch"]["type"] == "program"
-    assert "program" not in migrated["apps"][1]
-    assert "program" in valid_config["apps"][1]
+    with pytest.raises(ValueError, match="launch"):
+        validate_config(valid_config)
 
 
 def test_hot_reload_keeps_last_valid_configuration(store: ConfigStore) -> None:

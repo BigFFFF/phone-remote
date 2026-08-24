@@ -13,7 +13,7 @@ From the repository root:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".\server[dev]"
+.\.venv\Scripts\python.exe -m pip install -c .\server\constraints.txt -e ".\server[dev]"
 Set-Location server
 ..\.venv\Scripts\ruff.exe format .
 ..\.venv\Scripts\ruff.exe check .
@@ -54,6 +54,7 @@ Outputs: `dist\PhoneRemote.exe` and `packaging\windows\dist\PhoneRemoteSetup.exe
 
 ## Change checklist
 
-- Preserve `config.json version=1` compatibility or include a migration.
+- Run `python tools/sync_version.py` after changing `VERSION`; use `--write` to update references.
+- Target the current data and API formats; compatibility migrations are not required.
 - Update `protocol/openapi.yaml` and tests with API changes.
 - Run affected checks before handoff.

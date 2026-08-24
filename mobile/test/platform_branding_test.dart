@@ -7,42 +7,65 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Android launcher resources are adaptive and keep legacy fallbacks',
-      () async {
-    final manifest =
-        await File('android/app/src/main/AndroidManifest.xml').readAsString();
-    expect(manifest, contains('android:icon="@mipmap/ic_launcher"'));
-    expect(manifest, contains('android:roundIcon="@mipmap/ic_launcher_round"'));
+  test(
+    'Android launcher resources are adaptive and keep raster fallbacks',
+    () async {
+      final manifest = await File('android/app/src/main/AndroidManifest.xml')
+          .readAsString();
+      expect(manifest, contains('android:icon="@mipmap/ic_launcher"'));
+      expect(
+        manifest,
+        contains('android:roundIcon="@mipmap/ic_launcher_round"'),
+      );
 
-    for (final name in <String>['ic_launcher.xml', 'ic_launcher_round.xml']) {
-      final adaptive = await File(
-        'android/app/src/main/res/mipmap-anydpi-v26/$name',
-      ).readAsString();
-      expect(adaptive, contains('<adaptive-icon'));
-      expect(adaptive, contains('@drawable/ic_launcher_background'));
-      expect(adaptive, contains('@drawable/ic_launcher_foreground'));
-    }
-
-    final expectedSizes = <String, int>{
-      'mdpi': 48,
-      'hdpi': 72,
-      'xhdpi': 96,
-      'xxhdpi': 144,
-      'xxxhdpi': 192,
-    };
-    for (final entry in expectedSizes.entries) {
-      for (final fileName in <String>[
-        'ic_launcher.png',
-        'ic_launcher_round.png',
-      ]) {
-        final image = await _decode(
-          'android/app/src/main/res/mipmap-${entry.key}/$fileName',
-        );
-        expect(image.width, entry.value, reason: '$fileName ${entry.key}');
-        expect(image.height, entry.value, reason: '$fileName ${entry.key}');
-        image.dispose();
+      for (final name in <String>['ic_launcher.xml', 'ic_launcher_round.xml']) {
+        final adaptive = await File(
+          'android/app/src/main/res/mipmap-anydpi-v26/$name',
+        ).readAsString();
+        expect(adaptive, contains('<adaptive-icon'));
+        expect(adaptive, contains('@drawable/ic_launcher_background'));
+        expect(adaptive, contains('@drawable/ic_launcher_foreground'));
       }
-    }
+
+      final expectedSizes = <String, int>{
+        'mdpi': 48,
+        'hdpi': 72,
+        'xhdpi': 96,
+        'xxhdpi': 144,
+        'xxxhdpi': 192,
+      };
+      for (final entry in expectedSizes.entries) {
+        for (final fileName in <String>[
+          'ic_launcher.png',
+          'ic_launcher_round.png',
+        ]) {
+          final image = await _decode(
+            'android/app/src/main/res/mipmap-${entry.key}/$fileName',
+          );
+          expect(image.width, entry.value, reason: '$fileName ${entry.key}');
+          expect(image.height, entry.value, reason: '$fileName ${entry.key}');
+          image.dispose();
+        }
+      }
+    },
+  );
+
+  test('current mobile targets configure secure credential storage', () async {
+    final manifest = await File('android/app/src/main/AndroidManifest.xml')
+        .readAsString();
+    expect(manifest, contains('android:allowBackup="false"'));
+
+    final project = await File('ios/Runner.xcodeproj/project.pbxproj')
+        .readAsString();
+    expect(
+      'CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'.allMatches(
+        project,
+      ),
+      hasLength(3),
+    );
+    final entitlements = await File('ios/Runner/Runner.entitlements')
+        .readAsString();
+    expect(entitlements, contains('<key>keychain-access-groups</key>'));
   });
 
   test('iOS AppIcon files have exact dimensions and no transparency', () async {

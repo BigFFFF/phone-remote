@@ -11,6 +11,7 @@ dist/
 packaging/windows/dist/
 *.egg-info/
 .coverage
+mobile/coverage/
 
 # Local identity, credentials, and certificates
 state.json

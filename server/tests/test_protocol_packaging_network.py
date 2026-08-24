@@ -193,36 +193,42 @@ def test_wake_targets_normalize_mac_and_compute_directed_broadcast(monkeypatch) 
 
 
 def test_web_pairing_ignores_only_responses_from_replaced_credentials() -> None:
-    page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
-    assert "const requestCredential = credential;" in page
-    assert "if (requestCredential !== credential) return response;" in page
-    success = page.index("localStorage.setItem('phone-remote-identity', identityFingerprint);")
-    reset = page.index("pairingSessionId = '';", success)
-    refresh = page.index("refresh(); refreshApps();", success)
+    script = (REPOSITORY_ROOT / "server" / "web" / "assets" / "index.js").read_text(
+        encoding="utf-8"
+    )
+    assert "const requestCredential = credential;" in script
+    assert "if (requestCredential !== credential) return response;" in script
+    success = script.index("localStorage.setItem('phone-remote-identity', identityFingerprint);")
+    reset = script.index("pairingSessionId = '';", success)
+    refresh = script.index("refresh(); refreshApps();", success)
     assert success < reset < refresh
-    assert page.count("if (!credential) return Promise.resolve();") >= 2
-    assert "if (statusRefreshPromise) return statusRefreshPromise;" in page
-    assert "if (appsRefreshPromise) return appsRefreshPromise;" in page
+    assert script.count("if (!credential) return Promise.resolve();") >= 2
+    assert "if (statusRefreshPromise) return statusRefreshPromise;" in script
+    assert "if (appsRefreshPromise) return appsRefreshPromise;" in script
 
 
 def test_web_touchpad_coalesces_input_and_bounds_request_concurrency() -> None:
-    page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
-    assert "event.getCoalescedEvents()" in page
-    assert "maxInFlight: 1" in page
-    assert "pointerSocket.bufferedAmount >= pointerBufferLimit" in page
-    assert "pendingMoveLimit = 240" in page
-    assert "requestAnimationFrame(flushPointerTraffic)" in page
-    assert "sendMouse({ type: 'click', button: 'right' })" in page
+    script = (REPOSITORY_ROOT / "server" / "web" / "assets" / "index.js").read_text(
+        encoding="utf-8"
+    )
+    assert "event.getCoalescedEvents()" in script
+    assert "maxInFlight: 1" in script
+    assert "pointerSocket.bufferedAmount >= pointerBufferLimit" in script
+    assert "pendingMoveLimit = 240" in script
+    assert "requestAnimationFrame(flushPointerTraffic)" in script
+    assert "sendMouse({ type: 'click', button: 'right' })" in script
 
 
 def test_web_polling_and_key_repeat_apply_backpressure() -> None:
-    page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
-    assert "if (statusRefreshPromise) return statusRefreshPromise;" in page
-    assert "if (appsRefreshPromise) return appsRefreshPromise;" in page
-    assert "document.visibilityState === 'visible' && activeView === 'apps'" in page
-    assert "await send(button.dataset.action);" in page
-    assert "repeatTimer" not in page
-    assert "endPointer(event, true)" in page
+    script = (REPOSITORY_ROOT / "server" / "web" / "assets" / "index.js").read_text(
+        encoding="utf-8"
+    )
+    assert "if (statusRefreshPromise) return statusRefreshPromise;" in script
+    assert "if (appsRefreshPromise) return appsRefreshPromise;" in script
+    assert "document.visibilityState === 'visible' && activeView === 'apps'" in script
+    assert "await send(button.dataset.action);" in script
+    assert "repeatTimer" not in script
+    assert "endPointer(event, true)" in script
 
 
 def test_discovery_failure_never_blocks_manual_connection(monkeypatch) -> None:

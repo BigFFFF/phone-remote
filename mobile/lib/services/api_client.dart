@@ -20,6 +20,59 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+Future<Uint8List> readBoundedResponseBytes(
+  Stream<List<int>> response, {
+  required int maximumBytes,
+  required Duration timeout,
+}) {
+  if (maximumBytes < 1) {
+    throw ArgumentError.value(maximumBytes, 'maximumBytes', 'must be positive');
+  }
+  if (timeout <= Duration.zero) {
+    throw ArgumentError.value(timeout, 'timeout', 'must be positive');
+  }
+
+  final completer = Completer<Uint8List>();
+  final builder = BytesBuilder(copy: false);
+  StreamSubscription<List<int>>? subscription;
+  late final Timer timer;
+
+  subscription = response.listen(
+    (chunk) {
+      if (builder.length + chunk.length > maximumBytes) {
+        unawaited(subscription?.cancel());
+        completer.completeError(
+          const ApiException(
+            'The Windows PC returned a response that is too large.',
+          ),
+        );
+        return;
+      }
+      builder.add(chunk);
+    },
+    onError: (Object error, StackTrace stackTrace) {
+      if (!completer.isCompleted) {
+        completer.completeError(error, stackTrace);
+      }
+    },
+    onDone: () {
+      if (!completer.isCompleted) {
+        completer.complete(builder.takeBytes());
+      }
+    },
+    cancelOnError: true,
+  );
+  timer = Timer(timeout, () {
+    if (!completer.isCompleted) {
+      unawaited(subscription?.cancel());
+      completer.completeError(
+        TimeoutException('Response body deadline exceeded.', timeout),
+      );
+    }
+  });
+  return completer.future.whenComplete(timer.cancel);
+}
+
 class UnauthorizedException extends ApiException {
   const UnauthorizedException([
     super.message = 'This device is no longer authorized.',
@@ -140,6 +193,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   bool _closed = false;
   String? _cachedCertificatePem;
   CertificateFingerprints? _cachedFingerprints;
+  static const int _maximumJsonBytes = 256 * 1024;
   static const int _maximumIconBytes = 2 * 1024 * 1024;
   static const int _iconDownloadWorkers = 4;
   static const int _maximumIconCacheBytes = 16 * 1024 * 1024;
@@ -552,7 +606,12 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         );
       }
       final fingerprints = _fingerprintsFor(certificate);
-      final text = await utf8.decoder.bind(response).join().timeout(timeout);
+      final bytes = await readBoundedResponseBytes(
+        response,
+        maximumBytes: _maximumJsonBytes,
+        timeout: timeout,
+      );
+      final text = utf8.decode(bytes);
       final decoded = text.isEmpty
           ? const <String, Object?>{}
           : jsonDecode(text);

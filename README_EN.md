@@ -53,7 +53,7 @@ Windows 11 and Python 3.12 are required:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".\server[dev]"
+.\.venv\Scripts\python.exe -m pip install -c .\server\constraints.txt -e ".\server[dev]"
 .\.venv\Scripts\python.exe -m phone_remote
 ```
 

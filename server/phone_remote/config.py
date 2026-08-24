@@ -45,36 +45,11 @@ def require_absolute_path(value: Any, field: str) -> str:
     return path
 
 
-def migrate_config(raw: Any) -> dict[str, Any]:
-    """Normalize supported version-1 legacy shapes without modifying user input."""
+def validate_config(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("config must be an object")
-    migrated = copy.deepcopy(raw)
-    if migrated.get("version") != 1:
+    if raw.get("version") != 1:
         raise ValueError("unsupported config version")
-    apps = migrated.get("apps")
-    if isinstance(apps, list):
-        for app in apps:
-            if not isinstance(app, dict) or "launch" in app:
-                continue
-            if "program" in app:
-                app["launch"] = {
-                    "type": "program",
-                    "path": app.pop("program"),
-                    "args": app.pop("args", []),
-                }
-            elif "browser" in app:
-                app["launch"] = {
-                    "type": "browser",
-                    "browser": app.pop("browser"),
-                    "url": app.pop("url", ""),
-                    "fullscreen": app.pop("fullscreen", False),
-                }
-    return migrated
-
-
-def validate_config(raw: Any) -> dict[str, Any]:
-    raw = migrate_config(raw)
     initial_discovery_complete = raw.get("initialDiscoveryComplete", False)
     if not isinstance(initial_discovery_complete, bool):
         raise ValueError("initialDiscoveryComplete must be true or false")

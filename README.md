@@ -52,7 +52,7 @@ docs/                   设计、开发、安全和发布说明
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".\server[dev]"
+.\.venv\Scripts\python.exe -m pip install -c .\server\constraints.txt -e ".\server[dev]"
 .\.venv\Scripts\python.exe -m phone_remote
 ```
 

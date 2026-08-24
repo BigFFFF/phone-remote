@@ -1,0 +1,22 @@
+:root { color-scheme: dark; font-family: system-ui, "Microsoft YaHei UI", sans-serif; background: #11181d; color: #edf3f5; }
+    * { box-sizing: border-box; }
+    body { max-width: 980px; margin: auto; padding: 24px; }
+    header, .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    header h1, .row h2 { flex: 1; }
+    h1, h2 { margin: 0 0 12px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    section { scroll-margin-top: 12px; background: #1b252c; border: 1px solid #34444e; border-radius: 12px; padding: 18px; margin: 16px 0; }
+    button, input, select, a.action { font: inherit; padding: 9px 12px; border-radius: 7px; border: 1px solid #49616d; }
+    button, a.action { background: #27717a; color: white; cursor: pointer; text-decoration: none; }
+    button.secondary, a.secondary { background: #26343c; }
+    button.danger { background: #8f3431; }
+    input, select { color: inherit; background: #11181d; min-width: 180px; }
+    form, .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .item { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #34444e; }
+    .item-main { display: flex; gap: 12px; min-width: 0; align-items: center; }
+    .item-icon { width: 42px; height: 42px; flex: 0 0 42px; object-fit: contain; border-radius: 9px; }
+    .item-text { min-width: 0; }
+    .muted { color: #a9bac3; font-size: 14px; }
+    #pairCode { font: 700 36px ui-monospace, monospace; letter-spacing: 7px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 560px) { body { padding: 14px; } .item { grid-template-columns: 1fr; } }

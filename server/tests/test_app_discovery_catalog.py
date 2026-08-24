@@ -195,45 +195,6 @@ def test_initial_discovery_configures_edge_and_steam_once(catalog_setup) -> None
     assert provider.calls == 1
 
 
-def test_initial_discovery_prefers_launcher_and_repairs_legacy_steam_uninstaller(
-    catalog_setup,
-) -> None:
-    tmp_path, store, default_icon = catalog_setup
-    uninstaller = tmp_path / "uninstall.exe"
-    steam = tmp_path / "Steam.exe"
-    uninstaller.touch()
-    steam.touch()
-    config = store.get()
-    config["initialDiscoveryComplete"] = True
-    config["apps"].append(
-        {
-            "id": "steam",
-            "name": "Steam",
-            "enabled": True,
-            "available": True,
-            "icon": "default.svg",
-            "launch": {"type": "program", "path": str(uninstaller), "args": []},
-        }
-    )
-    store.write(config)
-    candidates = [
-        program_candidate(
-            name="Steam", executable=str(uninstaller), source="registry-uninstall", confidence=55
-        ),
-        program_candidate(name="Steam", executable=str(steam), source="start-menu", confidence=90),
-    ]
-    catalog = ApplicationCatalog(
-        store,
-        ApplicationDiscovery([Provider(candidates)]),
-        default_icon,
-    )
-
-    assert catalog.initialize_known_apps() == []
-    repaired = store.get()["apps"][0]
-    assert repaired["launch"]["path"] == str(steam)
-    assert repaired["launch"]["args"] == ["steam://open/bigpicture"]
-
-
 def test_rescan_marks_missing_without_overwriting_user_fields(catalog_setup) -> None:
     tmp_path, store, default_icon = catalog_setup
     executable = tmp_path / "player.exe"

@@ -14,6 +14,9 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw 'Create the Python 3.12 .venv and install server[dev] first.'
 }
 
+& $Python (Join-Path $RepositoryRoot 'tools\sync_version.py')
+if ($LASTEXITCODE -ne 0) { throw 'Version references are inconsistent.' }
+
 & $Python -m PyInstaller --noconfirm --clean --distpath $Dist --workpath $Work $Spec
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
 

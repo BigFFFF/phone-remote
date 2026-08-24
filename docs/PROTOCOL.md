@@ -30,5 +30,4 @@ command lines are rejected. Request bodies are limited to 16 KiB.
 `sleep` and `hibernate` request Windows standby and hibernation; actual behavior and Wake on LAN
 support depend on firmware, Windows policy, and the network adapter.
 
-Product versions may differ while both sides report `apiVersion: 1`. New clients use `/api/v1/*`;
-legacy authenticated aliases remain for compatibility.
+Both sides must report `apiVersion: 1`. Only the versioned `/api/v1/*` routes are supported.

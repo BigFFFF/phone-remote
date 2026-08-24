@@ -95,11 +95,14 @@ class ServerRuntime:
             catalog_ready=threading.Event(),
         )
         self.context.start_network_monitor()
-        self.http = PhoneRemoteServer((args.host, args.port), self.context)
         self.web_http: PhoneRemoteServer | None = None
+        ssl_context = None if args.insecure_http else self.identity_manager.create_ssl_context()
+        self.http = PhoneRemoteServer(
+            (args.host, args.port),
+            self.context,
+            ssl_context=ssl_context,
+        )
         if not args.insecure_http:
-            ssl_context = self.identity_manager.create_ssl_context()
-            self.http.socket = ssl_context.wrap_socket(self.http.socket, server_side=True)
             self.web_http = PhoneRemoteServer(
                 (args.host, args.web_port),
                 self.context,

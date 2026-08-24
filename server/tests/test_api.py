@@ -302,6 +302,44 @@ def test_server_bind_does_not_perform_reverse_dns(api: RunningApi, monkeypatch) 
         server.server_close()
 
 
+def test_connection_limit_rejects_excess_slow_clients(api: RunningApi) -> None:
+    server = PhoneRemoteServer(
+        ("127.0.0.1", 0),
+        api.context,
+        max_connections=1,
+        request_timeout_seconds=0.3,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    first = socket.create_connection(("127.0.0.1", server.server_port), timeout=2)
+    second = None
+    try:
+        first.sendall(b"GET /api/v1/info HTTP/1.1\r\nHost: localhost\r\n")
+        threading.Event().wait(0.05)
+
+        second = socket.create_connection(("127.0.0.1", server.server_port), timeout=2)
+        second.sendall(b"GET /api/v1/info HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        try:
+            response = second.recv(4096)
+        except OSError:
+            response = b""
+        assert response == b""
+
+        first.settimeout(2)
+        try:
+            response = first.recv(4096)
+        except OSError:
+            response = b""
+        assert response == b""
+    finally:
+        first.close()
+        if second is not None:
+            second.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) -> None:
     assert api.request("GET", "/api/v1/status")[0] == 401
     paired = api.pair()
@@ -389,6 +427,37 @@ def test_validation_errors_and_request_limits(api: RunningApi) -> None:
         "POST", "/api/v1/action", b"x" * (16 * 1024 + 1), credential=credential, raw=True
     )
     assert status == 413 and body["error"] == "request is too large"
+
+
+def test_request_bodies_reject_missing_and_unknown_fields(api: RunningApi) -> None:
+    credential = api.pair()["credential"]
+    assert (
+        api.request(
+            "POST",
+            "/api/v1/action",
+            {"action": "up", "typo": True},
+            credential=credential,
+        )[0]
+        == 400
+    )
+    assert (
+        api.request(
+            "POST",
+            "/api/v1/mouse",
+            {"type": "move", "dx": 1},
+            credential=credential,
+        )[0]
+        == 400
+    )
+    assert (
+        api.request(
+            "POST",
+            "/api/v1/apps/player/launch",
+            {"ignored": True},
+            credential=credential,
+        )[0]
+        == 400
+    )
 
 
 def test_power_and_text_are_mapped_without_logging_text(api: RunningApi, caplog) -> None:
@@ -499,8 +568,52 @@ def test_private_lan_web_listener_serves_remote_and_keeps_management_loopback_on
         thread.join(timeout=5)
 
 
-def test_legacy_routes_are_authenticated_during_migration(api: RunningApi) -> None:
-    assert api.request("GET", "/api/status")[0] == 401
+def test_web_pages_use_external_assets_and_strict_csp(api: RunningApi) -> None:
+    connection = http.client.HTTPConnection("127.0.0.1", api.port, timeout=5)
+    connection.request("GET", "/")
+    response = connection.getresponse()
+    html = response.read().decode()
+    csp = response.headers["Content-Security-Policy"]
+    connection.close()
+
+    assert response.status == 200
+    assert '<link rel="stylesheet" href="/assets/index.css">' in html
+    assert '<script src="/assets/index.js"></script>' in html
+    assert "<style" not in html
+    assert "<script>" not in html
+    assert "unsafe-inline" not in csp
+
+    connection = http.client.HTTPConnection("127.0.0.1", api.port, timeout=5)
+    connection.request("GET", "/manage")
+    manage_response = connection.getresponse()
+    manage_html = manage_response.read().decode()
+    connection.close()
+    assert manage_response.status == 200
+    assert '<link rel="stylesheet" href="/assets/manage.css">' in manage_html
+    assert '<script src="/assets/manage.js"></script>' in manage_html
+    assert "unsafe-inline" not in manage_response.headers["Content-Security-Policy"]
+
+    manage_script = (api.context.paths.web_root / "assets" / "manage.js").read_text(
+        encoding="utf-8"
+    )
+    assert "history.replaceState" in manage_script
+    assert "sessionStorage.setItem('phone-remote-admin-token'" in manage_script
+
+    for asset_path in (
+        "/assets/index.css",
+        "/assets/index.js",
+        "/assets/manage.css",
+        "/assets/manage.js",
+    ):
+        connection = http.client.HTTPConnection("127.0.0.1", api.port, timeout=5)
+        connection.request("GET", asset_path)
+        asset_response = connection.getresponse()
+        asset_response.read()
+        connection.close()
+        assert asset_response.status == 200
+
+
+def test_unversioned_legacy_routes_are_not_supported(api: RunningApi) -> None:
     credential = api.pair()["credential"]
-    assert api.request("GET", "/api/status", credential=credential)[0] == 200
-    assert api.request("GET", "/api/apps", credential=credential)[0] == 200
+    assert api.request("GET", "/api/status", credential=credential)[0] == 404
+    assert api.request("GET", "/api/apps", credential=credential)[0] == 404

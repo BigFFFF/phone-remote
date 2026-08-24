@@ -8,6 +8,7 @@ import logging
 import mimetypes
 import secrets
 import socketserver
+import ssl
 import threading
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -35,6 +36,10 @@ from .windows_control import ControlService
 
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_WEBSOCKET_FRAME_BYTES = 4 * 1024
+MAX_CONCURRENT_CONNECTIONS = 64
+MAX_REQUESTS_PER_CONNECTION = 100
+HTTP_IDLE_TIMEOUT_SECONDS = 30.0
+TLS_HANDSHAKE_TIMEOUT_SECONDS = 5.0
 NETWORK_PROFILE_REFRESH_SECONDS = 60
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 REPEATABLE_ACTIONS = {
@@ -159,11 +164,23 @@ class PhoneRemoteServer(ThreadingHTTPServer):
         *,
         allow_management: bool = True,
         private_lan_only: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        max_connections: int = MAX_CONCURRENT_CONNECTIONS,
+        request_timeout_seconds: float = HTTP_IDLE_TIMEOUT_SECONDS,
+        tls_handshake_timeout_seconds: float = TLS_HANDSHAKE_TIMEOUT_SECONDS,
     ):
+        if max_connections < 1:
+            raise ValueError("max_connections must be positive")
+        if request_timeout_seconds <= 0 or tls_handshake_timeout_seconds <= 0:
+            raise ValueError("connection timeouts must be positive")
         super().__init__(address, PhoneRemoteHandler)
         self.context = context
         self.allow_management = allow_management
         self.private_lan_only = private_lan_only
+        self.ssl_context = ssl_context
+        self.request_timeout_seconds = request_timeout_seconds
+        self.tls_handshake_timeout_seconds = tls_handshake_timeout_seconds
+        self._connection_slots = threading.BoundedSemaphore(max_connections)
 
     def server_bind(self) -> None:
         # HTTPServer.server_bind performs a reverse-DNS lookup for the bind
@@ -174,6 +191,40 @@ class PhoneRemoteServer(ThreadingHTTPServer):
         self.server_name = str(host)
         self.server_port = int(port)
 
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._connection_slots.acquire(blocking=False):
+            self.context.logger.warning("connection limit reached client=%s", client_address[0])
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        active_request = request
+        try:
+            if self.ssl_context is not None:
+                request.settimeout(self.tls_handshake_timeout_seconds)
+                active_request = self.ssl_context.wrap_socket(
+                    request,
+                    server_side=True,
+                    do_handshake_on_connect=False,
+                )
+                active_request.do_handshake()
+            active_request.settimeout(self.request_timeout_seconds)
+            self.finish_request(active_request, client_address)
+        except (TimeoutError, ssl.SSLError, ConnectionError) as exc:
+            self.context.logger.debug(
+                "connection closed client=%s reason=%s", client_address[0], exc
+            )
+        except Exception:
+            self.handle_error(active_request, client_address)
+        finally:
+            self.shutdown_request(active_request)
+            self._connection_slots.release()
+
 
 class PhoneRemoteHandler(BaseHTTPRequestHandler):
     server: PhoneRemoteServer
@@ -181,6 +232,14 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"
     disable_nagle_algorithm = True
+
+    def handle(self) -> None:
+        self.close_connection = True
+        for _ in range(MAX_REQUESTS_PER_CONNECTION):
+            self.handle_one_request()
+            if self.close_connection:
+                return
+        self.close_connection = True
 
     def log_message(self, format_string: str, *args: Any) -> None:
         self.server.context.logger.debug(
@@ -236,6 +295,10 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
         except (ValueError, FileNotFoundError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+        except TimeoutError:
+            self.close_connection = True
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
         except Exception:
             context.logger.exception("request failed method=%s path=%s", method, self.path)
             self._json(
@@ -260,7 +323,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
             )
         if method == "POST" and path == "/api/v1/pair/request":
-            self._read_json()
+            _validate_body_keys(self._read_json(), required=set(), allowed=set())
             session = context.pairing.start(self.client_address[0])
             return (
                 {
@@ -272,6 +335,11 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             )
         if method == "POST" and path == "/api/v1/pair/complete":
             data = self._read_json()
+            _validate_body_keys(
+                data,
+                required={"sessionId", "code", "deviceName", "platform"},
+                allowed={"sessionId", "code", "deviceName", "platform"},
+            )
             issued = context.pairing.complete(
                 _body_text(data, "sessionId", 80),
                 _body_text(data, "code", 6),
@@ -290,14 +358,6 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                 HTTPStatus.CREATED,
             )
 
-        legacy_paths = {
-            "/api/status": "/api/v1/status",
-            "/api/apps": "/api/v1/apps",
-            "/api/action": "/api/v1/action",
-            "/api/mouse": "/api/v1/mouse",
-            "/api/text": "/api/v1/text",
-        }
-        path = legacy_paths.get(path, path)
         client = self._require_client()
         client_id = str(client["client_id"])
         if method == "GET" and path == "/api/v1/status":
@@ -333,28 +393,32 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             return {"ok": True, "apps": apps, "warning": warning}, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/action":
             data = self._read_json()
+            _validate_body_keys(data, required={"action"}, allowed={"action"})
             action = data.get("action")
             result = context.control.action(action)
             log = context.logger.debug if action in REPEATABLE_ACTIONS else context.logger.info
             log("control action client=%s action=%s", client_id, action)
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/mouse":
-            result = context.control.mouse(self._read_json())
+            result = context.control.mouse(_validate_mouse_body(self._read_json()))
             log = context.logger.debug if result["message"] == "move" else context.logger.info
             log("control action client=%s action=mouse:%s", client_id, result["message"])
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/text":
             data = self._read_json()
+            _validate_body_keys(data, required={"text"}, allowed={"text"})
             result = context.control.text(data.get("text"))
             context.logger.info("control action client=%s action=text", client_id)
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/power":
             data = self._read_json()
+            _validate_body_keys(data, required={"action"}, allowed={"action"})
             action = data.get("action")
             result = context.control.power(action)
             context.logger.info("control action client=%s action=power:%s", client_id, action)
             return result, HTTPStatus.OK
         if method == "POST" and path.startswith("/api/v1/apps/") and path.endswith("/launch"):
+            _validate_body_keys(self._read_json(), required=set(), allowed=set())
             app_id = unquote(path[len("/api/v1/apps/") : -len("/launch")]).strip("/")
             result = context.control.launch_app(app_id)
             context.logger.info("control action client=%s action=app:%s", client_id, app_id)
@@ -398,6 +462,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             return {"ok": True, "clients": context.credentials.list_clients()}
         if method == "POST" and path == "/api/v1/admin/runtime/startup":
             data = self._read_json()
+            _validate_body_keys(data, required={"enabled"}, allowed={"enabled"})
             enabled = data.get("enabled")
             if not isinstance(enabled, bool):
                 raise ValueError("enabled must be true or false")
@@ -407,10 +472,12 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             return {"ok": True, "enabled": enabled}
         if method == "POST" and path == "/api/v1/admin/runtime/language":
             data = self._read_json()
+            _validate_body_keys(data, required={"language"}, allowed={"language"})
             if context.ui_language is None:
                 raise ValueError("UI language preference is unavailable")
             return {"ok": True, "language": context.ui_language.set(data.get("language"))}
         if method == "POST" and path == "/api/v1/admin/clients/revoke-all":
+            _validate_body_keys(self._read_json(), required=set(), allowed=set())
             return {"ok": True, "revoked": context.credentials.revoke_all()}
         if method == "DELETE" and path.startswith("/api/v1/admin/clients/"):
             client_id = unquote(path.rsplit("/", 1)[1])
@@ -418,12 +485,19 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                 raise ApiError(HTTPStatus.NOT_FOUND, "client not found")
             return {"ok": True}
         if method == "POST" and path == "/api/v1/admin/apps/rescan":
+            _validate_body_keys(self._read_json(), required=set(), allowed=set())
             return {"ok": True, "candidates": context.catalog.rescan()}
         if method == "POST" and path == "/api/v1/admin/apps/approve":
             data = self._read_json()
+            _validate_body_keys(data, required={"discoveryId"}, allowed={"discoveryId"})
             return {"ok": True, "app": context.catalog.approve(_body_text(data, "discoveryId", 80))}
         if method == "POST" and path == "/api/v1/admin/apps/manual-program":
             data = self._read_json()
+            _validate_body_keys(
+                data,
+                required={"name", "path"},
+                allowed={"name", "path", "arguments"},
+            )
             return {
                 "ok": True,
                 "app": context.catalog.add_program(
@@ -434,6 +508,11 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             }
         if method == "POST" and path == "/api/v1/admin/apps/manual-website":
             data = self._read_json()
+            _validate_body_keys(
+                data,
+                required={"name", "browser", "url"},
+                allowed={"name", "browser", "url", "fullscreen"},
+            )
             return {
                 "ok": True,
                 "app": context.catalog.add_website(
@@ -446,6 +525,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
         if method == "POST" and path.startswith("/api/v1/admin/apps/"):
             app_id = unquote(path.rsplit("/", 1)[1])
             data = self._read_json()
+            _validate_body_keys(data, required={"enabled"}, allowed={"enabled"})
             return {
                 "ok": True,
                 "app": context.catalog.set_enabled(app_id, data.get("enabled")),
@@ -542,7 +622,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             if not isinstance(data, dict) or data.get("type") not in {"move", "wheel"}:
                 raise WebSocketProtocolError("invalid pointer event")
             try:
-                self.server.context.control.mouse(data)
+                self.server.context.control.mouse(_validate_mouse_body(data))
             except ValueError as exc:
                 raise WebSocketProtocolError("invalid pointer event") from exc
 
@@ -685,13 +765,42 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
         if content_type.startswith("text/html"):
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-                "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+                "default-src 'self'; img-src 'self' data:; style-src 'self'; "
+                "script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
             )
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         if not head:
             self.wfile.write(payload)
+
+
+def _validate_body_keys(
+    data: dict[str, Any],
+    *,
+    required: set[str],
+    allowed: set[str],
+) -> None:
+    missing = required - data.keys()
+    if missing:
+        raise ValueError(f"missing field: {sorted(missing)[0]}")
+    unexpected = data.keys() - allowed
+    if unexpected:
+        raise ValueError(f"unexpected field: {sorted(unexpected)[0]}")
+
+
+def _validate_mouse_body(data: dict[str, Any]) -> dict[str, Any]:
+    kind = data.get("type")
+    schemas = {
+        "move": ({"type", "dx", "dy"}, {"type", "dx", "dy"}),
+        "click": ({"type"}, {"type", "button"}),
+        "double": ({"type"}, {"type"}),
+        "wheel": ({"type", "delta"}, {"type", "delta"}),
+    }
+    if not isinstance(kind, str) or kind not in schemas:
+        raise ValueError("unknown mouse event")
+    required, allowed = schemas[kind]
+    _validate_body_keys(data, required=required, allowed=allowed)
+    return data
 
 
 def _body_text(data: dict[str, Any], key: str, maximum: int) -> str:

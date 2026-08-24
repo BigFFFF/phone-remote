@@ -25,14 +25,13 @@ void main() {
 
     expect(await repository.getAll(), <Device>[device]);
     expect(await repository.readCredential(device), 'top-secret-credential');
-    expect(metadata.values.values.single,
-        isNot(contains('top-secret-credential')));
     expect(
-      credentials.values,
-      <String, String>{
-        'phone_remote.credential.client-1': 'top-secret-credential',
-      },
+      metadata.values.values.single,
+      isNot(contains('top-secret-credential')),
     );
+    expect(credentials.values, <String, String>{
+      'phone_remote.credential.client-1': 'top-secret-credential',
+    });
   });
 
   test('supports multiple PCs and keeps favorites first', () async {
@@ -76,6 +75,55 @@ void main() {
     expect((await repository.getAll()).single, second);
     expect(await repository.readCredential(first), isNull);
     expect(await repository.readCredential(second), 'second-secret');
+  });
+
+  test('serializes concurrent saves without losing a device', () async {
+    final first = _device(serverId: 'first', clientId: 'client-first');
+    final second = _device(serverId: 'second', clientId: 'client-second');
+
+    await Future.wait(<Future<void>>[
+      repository.savePaired(first, 'first-secret'),
+      repository.savePaired(second, 'second-secret'),
+    ]);
+
+    expect(
+      (await repository.getAll()).map((device) => device.serverId).toSet(),
+      <String>{'first', 'second'},
+    );
+  });
+
+  test('rolls back a new credential when metadata cannot be saved', () async {
+    final device = _device(serverId: 'server-1', clientId: 'client-1');
+    metadata.writeError = StateError('disk full');
+
+    await expectLater(
+      repository.savePaired(device, 'new-secret'),
+      throwsStateError,
+    );
+
+    expect(credentials.values, isEmpty);
+  });
+
+  test('removes the superseded credential after pairing again', () async {
+    final original = _device(serverId: 'server-1', clientId: 'client-old');
+    final replacement = _device(serverId: 'server-1', clientId: 'client-new');
+    await repository.savePaired(original, 'old-secret');
+
+    await repository.savePaired(replacement, 'new-secret');
+
+    expect(await repository.readCredential(original), isNull);
+    expect(await repository.readCredential(replacement), 'new-secret');
+  });
+
+  test('restores a credential when removing metadata fails', () async {
+    final device = _device(serverId: 'server-1', clientId: 'client-1');
+    await repository.savePaired(device, 'secret');
+    metadata.writeError = StateError('disk full');
+
+    await expectLater(repository.remove(device), throwsStateError);
+
+    expect(await repository.getAll(), <Device>[device]);
+    expect(await repository.readCredential(device), 'secret');
   });
 }
 

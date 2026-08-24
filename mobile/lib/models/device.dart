@@ -1,3 +1,5 @@
+const Object _copyWithUnset = Object();
+
 class Device {
   const Device({
     required this.id,
@@ -42,14 +44,14 @@ class Device {
     String? name,
     String? host,
     int? port,
-    String? mac,
-    String? lastIpv4,
-    String? broadcastAddress,
+    Object? mac = _copyWithUnset,
+    Object? lastIpv4 = _copyWithUnset,
+    Object? broadcastAddress = _copyWithUnset,
     String? serverIdentity,
-    String? certificateFingerprint,
-    String? clientId,
-    String? credentialReference,
-    DateTime? lastSeen,
+    Object? certificateFingerprint = _copyWithUnset,
+    Object? clientId = _copyWithUnset,
+    Object? credentialReference = _copyWithUnset,
+    Object? lastSeen = _copyWithUnset,
     bool? favorite,
   }) {
     return Device(
@@ -58,35 +60,46 @@ class Device {
       name: name ?? this.name,
       host: host ?? this.host,
       port: port ?? this.port,
-      mac: mac ?? this.mac,
-      lastIpv4: lastIpv4 ?? this.lastIpv4,
-      broadcastAddress: broadcastAddress ?? this.broadcastAddress,
+      mac: identical(mac, _copyWithUnset) ? this.mac : mac as String?,
+      lastIpv4: identical(lastIpv4, _copyWithUnset)
+          ? this.lastIpv4
+          : lastIpv4 as String?,
+      broadcastAddress: identical(broadcastAddress, _copyWithUnset)
+          ? this.broadcastAddress
+          : broadcastAddress as String?,
       serverIdentity: serverIdentity ?? this.serverIdentity,
-      certificateFingerprint:
-          certificateFingerprint ?? this.certificateFingerprint,
-      clientId: clientId ?? this.clientId,
-      credentialReference: credentialReference ?? this.credentialReference,
-      lastSeen: lastSeen ?? this.lastSeen,
+      certificateFingerprint: identical(certificateFingerprint, _copyWithUnset)
+          ? this.certificateFingerprint
+          : certificateFingerprint as String?,
+      clientId: identical(clientId, _copyWithUnset)
+          ? this.clientId
+          : clientId as String?,
+      credentialReference: identical(credentialReference, _copyWithUnset)
+          ? this.credentialReference
+          : credentialReference as String?,
+      lastSeen: identical(lastSeen, _copyWithUnset)
+          ? this.lastSeen
+          : lastSeen as DateTime?,
       favorite: favorite ?? this.favorite,
     );
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'id': id,
-        'serverId': serverId,
-        'name': name,
-        'host': host,
-        'port': port,
-        'mac': mac,
-        'lastIpv4': lastIpv4,
-        'broadcastAddress': broadcastAddress,
-        'serverIdentity': serverIdentity,
-        'certificateFingerprint': certificateFingerprint,
-        'clientId': clientId,
-        'credentialReference': credentialReference,
-        'lastSeen': lastSeen?.toUtc().toIso8601String(),
-        'favorite': favorite,
-      };
+    'id': id,
+    'serverId': serverId,
+    'name': name,
+    'host': host,
+    'port': port,
+    'mac': mac,
+    'lastIpv4': lastIpv4,
+    'broadcastAddress': broadcastAddress,
+    'serverIdentity': serverIdentity,
+    'certificateFingerprint': certificateFingerprint,
+    'clientId': clientId,
+    'credentialReference': credentialReference,
+    'lastSeen': lastSeen?.toUtc().toIso8601String(),
+    'favorite': favorite,
+  };
 
   factory Device.fromJson(Map<String, Object?> json) {
     String requiredString(String key) {
@@ -131,8 +144,9 @@ class Device {
       certificateFingerprint: optionalString('certificateFingerprint'),
       clientId: optionalString('clientId'),
       credentialReference: optionalString('credentialReference'),
-      lastSeen:
-          rawLastSeen == null ? null : DateTime.parse(rawLastSeen).toUtc(),
+      lastSeen: rawLastSeen == null
+          ? null
+          : DateTime.parse(rawLastSeen).toUtc(),
       favorite: rawFavorite,
     );
   }
@@ -158,19 +172,19 @@ class Device {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        serverId,
-        name,
-        host,
-        port,
-        mac,
-        lastIpv4,
-        broadcastAddress,
-        serverIdentity,
-        certificateFingerprint,
-        clientId,
-        credentialReference,
-        lastSeen,
-        favorite,
-      );
+    id,
+    serverId,
+    name,
+    host,
+    port,
+    mac,
+    lastIpv4,
+    broadcastAddress,
+    serverIdentity,
+    certificateFingerprint,
+    clientId,
+    credentialReference,
+    lastSeen,
+    favorite,
+  );
 }

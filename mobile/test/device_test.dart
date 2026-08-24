@@ -38,4 +38,31 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('copyWith can explicitly clear nullable metadata', () {
+    final device = Device(
+      id: 'local-1',
+      serverId: 'server-1',
+      name: 'PC',
+      host: '192.168.1.2',
+      mac: 'AA:BB:CC:DD:EE:FF',
+      serverIdentity: 'a' * 64,
+      clientId: 'client-1',
+      credentialReference: 'phone_remote.credential.client-1',
+      lastSeen: DateTime.utc(2026, 8, 20),
+    );
+
+    final cleared = device.copyWith(
+      mac: null,
+      clientId: null,
+      credentialReference: null,
+      lastSeen: null,
+    );
+
+    expect(cleared.mac, isNull);
+    expect(cleared.clientId, isNull);
+    expect(cleared.credentialReference, isNull);
+    expect(cleared.lastSeen, isNull);
+    expect(cleared.isPaired, isFalse);
+  });
 }
