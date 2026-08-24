@@ -53,6 +53,7 @@ class FakeNetwork:
     def __init__(self, public_only=False):
         self.is_public_only = public_only
         self.public_only_calls = 0
+        self.profile_refreshed = threading.Event()
 
     def addresses(self):
         return ["192.168.1.10"]
@@ -62,6 +63,7 @@ class FakeNetwork:
 
     def public_only(self):
         self.public_only_calls += 1
+        self.profile_refreshed.set()
         return self.is_public_only
 
     def firewall_status(self):
@@ -279,12 +281,25 @@ def test_api_supports_http11_keep_alive(api: RunningApi) -> None:
 def test_network_profile_is_cached_outside_request_path(api: RunningApi) -> None:
     api.context.start_network_monitor()
     try:
+        assert api.context.network.profile_refreshed.wait(timeout=1)
         assert api.context.network.public_only_calls == 1
         assert api.context.remote_allowed("192.168.1.20") is True
         assert api.context.remote_allowed("192.168.1.21") is True
         assert api.context.network.public_only_calls == 1
     finally:
         api.context.stop_network_monitor()
+
+
+def test_server_bind_does_not_perform_reverse_dns(api: RunningApi, monkeypatch) -> None:
+    def unexpected_lookup(_host):
+        raise AssertionError("server bind must not perform reverse DNS")
+
+    monkeypatch.setattr(socket, "getfqdn", unexpected_lookup)
+    server = PhoneRemoteServer(("127.0.0.1", 0), api.context)
+    try:
+        assert server.server_port > 0
+    finally:
+        server.server_close()
 
 
 def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) -> None:
@@ -298,6 +313,28 @@ def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) 
     status, _, _ = api.request("POST", "/api/v1/action", {"action": "up"}, credential=credential)
     assert status == 200
     assert api.backend.events[-1][0] == "key"
+
+
+def test_repeatable_actions_are_not_written_at_info_level(api: RunningApi, caplog) -> None:
+    credential = api.pair()["credential"]
+    with caplog.at_level(logging.DEBUG, logger=api.context.logger.name):
+        assert (
+            api.request("POST", "/api/v1/action", {"action": "up"}, credential=credential)[0] == 200
+        )
+        assert (
+            api.request("POST", "/api/v1/action", {"action": "enter"}, credential=credential)[0]
+            == 200
+        )
+
+    action_records = [record for record in caplog.records if "control action" in record.message]
+    assert any(
+        record.levelno == logging.DEBUG and "action=up" in record.message
+        for record in action_records
+    )
+    assert any(
+        record.levelno == logging.INFO and "action=enter" in record.message
+        for record in action_records
+    )
 
 
 def test_pointer_websocket_authenticates_once_and_streams_movement(api: RunningApi) -> None:

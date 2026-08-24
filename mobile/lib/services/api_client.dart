@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -6,6 +7,8 @@ import 'dart:typed_data';
 import '../models/api_models.dart';
 import '../models/server_endpoint.dart';
 import 'tls_identity_verifier.dart';
+
+typedef AppsUpdateHandler = void Function(List<ConfiguredApp> apps);
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode});
@@ -47,7 +50,7 @@ abstract interface class PhoneRemoteApiClient {
 
   Future<ServerStatus> getStatus();
 
-  Future<List<ConfiguredApp>> getApps();
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate});
 
   Future<void> launchApp(String appId);
 
@@ -139,6 +142,10 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   CertificateFingerprints? _cachedFingerprints;
   static const int _maximumIconBytes = 2 * 1024 * 1024;
   static const int _iconDownloadWorkers = 4;
+  static const int _maximumIconCacheBytes = 16 * 1024 * 1024;
+  static final LinkedHashMap<String, Uint8List> _iconCache =
+      LinkedHashMap<String, Uint8List>();
+  static int _iconCacheBytes = 0;
 
   @override
   Future<ServerInfo> getInfo() async {
@@ -218,7 +225,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   }
 
   @override
-  Future<List<ConfiguredApp>> getApps() async {
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) async {
     final response = await _send('GET', '/apps', authenticated: true);
     final rawApps = response.body['apps'];
     if (rawApps is! List<Object?>) {
@@ -230,6 +237,19 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       }
       return ConfiguredApp.fromJson(value);
     }).toList();
+    void publish() => onUpdate?.call(List<ConfiguredApp>.unmodifiable(apps));
+    Timer? updateTimer;
+    void schedulePublish() {
+      if (onUpdate == null || updateTimer != null) {
+        return;
+      }
+      updateTimer = Timer(const Duration(milliseconds: 100), () {
+        updateTimer = null;
+        publish();
+      });
+    }
+
+    publish();
     var nextIndex = 0;
     Future<void> downloadNext() async {
       while (nextIndex < apps.length) {
@@ -238,6 +258,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         try {
           final bytes = await _getIcon(app.icon);
           apps[index] = app.withIconBytes(bytes);
+          schedulePublish();
         } on IdentityMismatchException {
           rethrow;
         } on Object {
@@ -246,14 +267,19 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       }
     }
 
-    await Future.wait(<Future<void>>[
-      for (
-        var worker = 0;
-        worker < _iconDownloadWorkers && worker < apps.length;
-        worker += 1
-      )
-        downloadNext(),
-    ]);
+    try {
+      await Future.wait(<Future<void>>[
+        for (
+          var worker = 0;
+          worker < _iconDownloadWorkers && worker < apps.length;
+          worker += 1
+        )
+          downloadNext(),
+      ]);
+    } finally {
+      updateTimer?.cancel();
+      publish();
+    }
     return List<ConfiguredApp>.unmodifiable(apps);
   }
 
@@ -261,6 +287,13 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
     final path = Uri.tryParse(value);
     if (path == null || !path.path.startsWith('/app-icons/')) {
       throw const FormatException('App icon path is invalid.');
+    }
+    final cacheKey =
+        '${endpoint.host}:${endpoint.port}|${trustedIdentity ?? ''}|$value';
+    final cached = _iconCache.remove(cacheKey);
+    if (cached != null) {
+      _iconCache[cacheKey] = cached;
+      return cached;
     }
     try {
       final request = await _httpClient
@@ -305,6 +338,7 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       if (bytes.isEmpty) {
         throw const ApiException('The app icon is empty.');
       }
+      _rememberIcon(cacheKey, bytes);
       return bytes;
     } on IdentityMismatchException {
       rethrow;
@@ -381,34 +415,56 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
     if (_closed) {
       throw const ApiException('The connection to the Windows PC is closed.');
     }
-    final retryAfter = _pointerRetryAfter;
-    if (retryAfter != null && DateTime.now().isBefore(retryAfter)) {
-      await _sendCommand('/mouse', body);
+    final current = _pointerSocket;
+    if (current != null && current.readyState == WebSocket.open) {
+      current.add(jsonEncode(body));
       return;
     }
-    try {
-      final socket = await _pointerWebSocket();
-      socket.add(jsonEncode(body));
-    } on Object {
-      _pointerRetryAfter = DateTime.now().add(const Duration(seconds: 5));
-      _discardPointerSocket();
-      await _sendCommand('/mouse', body);
+    _startPointerWebSocketConnect();
+    await _sendCommand('/mouse', body);
+  }
+
+  static void _rememberIcon(String key, Uint8List bytes) {
+    final replaced = _iconCache.remove(key);
+    if (replaced != null) {
+      _iconCacheBytes -= replaced.length;
+    }
+    _iconCache[key] = bytes;
+    _iconCacheBytes += bytes.length;
+    while (_iconCacheBytes > _maximumIconCacheBytes && _iconCache.isNotEmpty) {
+      final oldestKey = _iconCache.keys.first;
+      final removed = _iconCache.remove(oldestKey);
+      if (removed != null) {
+        _iconCacheBytes -= removed.length;
+      }
     }
   }
 
-  Future<WebSocket> _pointerWebSocket() async {
+  void _startPointerWebSocketConnect() {
+    if (_closed || _pointerConnecting != null) {
+      return;
+    }
     final current = _pointerSocket;
     if (current != null && current.readyState == WebSocket.open) {
-      return current;
+      return;
     }
-    final connecting = _pointerConnecting;
-    if (connecting != null) {
-      return connecting;
+    final retryAfter = _pointerRetryAfter;
+    if (retryAfter != null && DateTime.now().isBefore(retryAfter)) {
+      return;
     }
     final future = _connectPointerWebSocket();
     _pointerConnecting = future;
+    unawaited(_finishPointerWebSocketConnect(future));
+  }
+
+  Future<void> _finishPointerWebSocketConnect(Future<WebSocket> future) async {
     try {
-      return await future;
+      await future;
+    } on Object {
+      if (!_closed) {
+        _pointerRetryAfter = DateTime.now().add(const Duration(seconds: 5));
+        _discardPointerSocket();
+      }
     } finally {
       if (identical(_pointerConnecting, future)) {
         _pointerConnecting = null;

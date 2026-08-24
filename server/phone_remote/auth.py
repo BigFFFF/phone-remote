@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import secrets
 import threading
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,7 +18,7 @@ SCRYPT_R = 8
 SCRYPT_P = 1
 SALT_BYTES = 16
 SECRET_BYTES = 32
-CREDENTIAL_CACHE_SECONDS = 5 * 60
+LAST_SEEN_UPDATE_SECONDS = 5 * 60
 
 
 def utc_now() -> str:
@@ -56,7 +55,6 @@ class IssuedCredential:
 class _CachedCredential:
     client_id: str
     record: dict[str, Any]
-    expires_at: float
 
 
 class CredentialStore:
@@ -64,6 +62,7 @@ class CredentialStore:
         self.state = state
         self._cache: dict[bytes, _CachedCredential] = {}
         self._cache_lock = threading.RLock()
+        self._last_seen_updates: set[str] = set()
 
     def issue(self, device_name: str, platform: str) -> IssuedCredential:
         device_name = _metadata_text(device_name, "device name", 120)
@@ -102,9 +101,9 @@ class CredentialStore:
         cache_key = _credential_cache_key(credential)
         with self._cache_lock:
             cached = self._cache.get(cache_key)
-            now_monotonic = time.monotonic()
             if cached is not None:
-                if cached.client_id == client_id and cached.expires_at > now_monotonic:
+                if cached.client_id == client_id:
+                    self._schedule_last_seen_update(cached.record, update_last_seen)
                     return dict(cached.record)
                 self._cache.pop(cache_key, None)
 
@@ -121,19 +120,10 @@ class CredentialStore:
                 return None
             if not hmac.compare_digest(actual, expected):
                 return None
-            if update_last_seen and _last_seen_is_stale(record):
-                now = utc_now()
-
-                def touch(value: dict[str, Any]) -> None:
-                    for item in value["clients"]:
-                        if item.get("client_id") == client_id and not item.get("revoked_at"):
-                            item["last_seen"] = now
-                            break
-
-                self.state.update(touch)
-                record["last_seen"] = now
             self._cache_credential(credential, record)
-            return _public_record(record)
+            public = _public_record(record)
+            self._schedule_last_seen_update(public, update_last_seen)
+            return public
 
     def list_clients(self, *, include_revoked: bool = False) -> list[dict[str, Any]]:
         records = self.state.read()["clients"]
@@ -182,8 +172,46 @@ class CredentialStore:
         self._cache[_credential_cache_key(credential)] = _CachedCredential(
             str(public["client_id"]),
             public,
-            time.monotonic() + CREDENTIAL_CACHE_SECONDS,
         )
+
+    def _schedule_last_seen_update(self, record: dict[str, Any], update_last_seen: bool) -> None:
+        if not update_last_seen or not _last_seen_is_stale(record):
+            return
+        client_id = str(record["client_id"])
+        if client_id in self._last_seen_updates:
+            return
+        self._last_seen_updates.add(client_id)
+        threading.Thread(
+            target=self._update_last_seen,
+            args=(client_id,),
+            name="phone-remote-last-seen",
+            daemon=True,
+        ).start()
+
+    def _update_last_seen(self, client_id: str) -> None:
+        now = utc_now()
+        updated = False
+
+        def touch(value: dict[str, Any]) -> None:
+            nonlocal updated
+            for item in value["clients"]:
+                if item.get("client_id") == client_id and not item.get("revoked_at"):
+                    item["last_seen"] = now
+                    updated = True
+                    break
+
+        try:
+            self.state.update(touch)
+        finally:
+            with self._cache_lock:
+                if updated:
+                    for key, cached in tuple(self._cache.items()):
+                        if cached.client_id != client_id:
+                            continue
+                        record = dict(cached.record)
+                        record["last_seen"] = now
+                        self._cache[key] = _CachedCredential(client_id, record)
+                self._last_seen_updates.discard(client_id)
 
     def _invalidate_client(self, client_id: str) -> None:
         self._cache = {
@@ -232,4 +260,4 @@ def _last_seen_is_stale(record: dict[str, Any]) -> bool:
         last_seen = datetime.fromisoformat(str(record["last_seen"]))
     except (KeyError, TypeError, ValueError):
         return True
-    return (datetime.now(UTC) - last_seen).total_seconds() >= 60
+    return (datetime.now(UTC) - last_seen).total_seconds() >= LAST_SEEN_UPDATE_SECONDS

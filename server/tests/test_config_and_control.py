@@ -1,6 +1,7 @@
 import base64
 import copy
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -170,6 +171,34 @@ def test_control_validation_and_mouse_clamps(store: ConfigStore) -> None:
         control.power("hybrid arbitrary command")
     with pytest.raises(ValueError, match="numeric"):
         control.mouse({"type": "move", "dx": "NaN", "dy": 0})
+
+
+def test_keyboard_hold_does_not_block_pointer_input(store: ConfigStore) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    mouse_done = threading.Event()
+
+    class BlockingBackend(FakeBackend):
+        def key(self, code):
+            entered.set()
+            release.wait(timeout=2)
+            super().key(code)
+
+    backend = BlockingBackend()
+    control = ControlService(backend, AppLauncher(store))
+    key_thread = threading.Thread(target=lambda: control.action("up"))
+    mouse_thread = threading.Thread(
+        target=lambda: (control.mouse({"type": "move", "dx": 1, "dy": 1}), mouse_done.set())
+    )
+    key_thread.start()
+    assert entered.wait(timeout=1)
+    mouse_thread.start()
+    try:
+        assert mouse_done.wait(timeout=0.5), "pointer input was blocked by keyboard input"
+    finally:
+        release.set()
+        key_thread.join(timeout=1)
+        mouse_thread.join(timeout=1)
 
 
 def test_sleep_command_requests_suspend_without_disabling_wake_events() -> None:

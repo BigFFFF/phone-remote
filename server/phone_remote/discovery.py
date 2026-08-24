@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import socket
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 
 from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
@@ -20,8 +21,13 @@ class DiscoveryPublisher:
     logger: logging.Logger
     zeroconf: Zeroconf | None = None
     service: ServiceInfo | None = None
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
 
     def start(self) -> bool:
+        with self._lock:
+            return self._start_locked()
+
+    def _start_locked(self) -> bool:
         lan_addresses = local_ipv4_addresses()
         addresses = [socket.inet_aton(value) for value in lan_addresses]
         if not addresses:
@@ -61,6 +67,14 @@ class DiscoveryPublisher:
         return True
 
     def close(self) -> None:
+        if not self._lock.acquire(timeout=0.25):
+            return
+        try:
+            self._close_locked()
+        finally:
+            self._lock.release()
+
+    def _close_locked(self) -> None:
         if self.zeroconf is not None:
             if self.service is not None:
                 try:

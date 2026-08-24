@@ -9,7 +9,7 @@ abstract interface class RemoteSession {
 
   ServerStatus get status;
 
-  Future<List<ConfiguredApp>> getApps();
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate});
 
   Future<void> launchApp(String appId);
 
@@ -109,7 +109,8 @@ class ApiRemoteSession implements RemoteSession {
   final PhoneRemoteApiClient _client;
 
   @override
-  Future<List<ConfiguredApp>> getApps() => _client.getApps();
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) =>
+      _client.getApps(onUpdate: onUpdate);
 
   @override
   Future<void> launchApp(String appId) => _client.launchApp(appId);

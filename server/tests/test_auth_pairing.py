@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,48 @@ def test_repeated_authentication_uses_cache_and_revocation_invalidates_it(
     assert calls == 1
     assert reloaded.revoke(issued.client_id)
     assert reloaded.authenticate(issued.credential) is None
+
+
+def test_last_seen_write_does_not_block_authentication(tmp_path: Path) -> None:
+    state = StateStore(tmp_path / "state.json")
+    issued = CredentialStore(state).issue("Phone", "android")
+
+    def make_stale(value):
+        value["clients"][0]["last_seen"] = "2000-01-01T00:00:00+00:00"
+
+    state.update(make_stale)
+    original_update = state.update
+    update_started = threading.Event()
+    allow_update = threading.Event()
+    update_finished = threading.Event()
+    authenticated = threading.Event()
+
+    def delayed_update(mutate):
+        update_started.set()
+        allow_update.wait(timeout=2)
+        try:
+            return original_update(mutate)
+        finally:
+            update_finished.set()
+
+    state.update = delayed_update
+    credentials = CredentialStore(state)
+    result = {}
+
+    def authenticate():
+        result["client"] = credentials.authenticate(issued.credential)
+        authenticated.set()
+
+    thread = threading.Thread(target=authenticate)
+    thread.start()
+    assert update_started.wait(timeout=1)
+    try:
+        assert authenticated.wait(timeout=0.5), "last_seen disk write blocked authentication"
+    finally:
+        allow_update.set()
+        thread.join(timeout=1)
+    assert update_finished.wait(timeout=1)
+    assert result["client"]["client_id"] == issued.client_id
 
 
 @pytest.mark.parametrize(

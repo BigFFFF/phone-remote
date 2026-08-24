@@ -72,15 +72,6 @@ class ServerRuntime:
             self.app_discovery,
             self.paths.bundle_root / "resources" / "icons" / "default.svg",
         )
-        try:
-            added_apps = self.catalog.initialize_known_apps()
-            if added_apps:
-                self.logger.info(
-                    "initial application discovery configured apps=%s",
-                    ",".join(item["id"] for item in added_apps),
-                )
-        except Exception:
-            self.logger.exception("initial application discovery failed")
         self.network = NetworkDiagnostics()
         self.startup_command = tuple(
             [sys.executable]
@@ -101,6 +92,7 @@ class ServerRuntime:
             web_port=args.port if args.insecure_http else args.web_port,
             startup_command=self.startup_command,
             ui_language=self.ui_language,
+            catalog_ready=threading.Event(),
         )
         self.context.start_network_monitor()
         self.http = PhoneRemoteServer((args.host, args.port), self.context)
@@ -115,6 +107,7 @@ class ServerRuntime:
             )
         self.publisher = DiscoveryPublisher(self.identity, args.port, self.logger)
         self._server_threads: list[threading.Thread] = []
+        self._maintenance_threads: list[threading.Thread] = []
 
     def run(self) -> None:
         scheme = "http" if self.args.insecure_http else "https"
@@ -131,10 +124,18 @@ class ServerRuntime:
                 self.args.host,
                 self.args.web_port,
             )
+        self._start_background_server(self.http, "phone-remote-api")
+        self._start_background_server(self.web_http, "phone-remote-web")
+        self._start_background_maintenance(
+            self._initialize_known_apps,
+            "phone-remote-initial-app-discovery",
+        )
         if not self.args.no_discovery and not self.args.insecure_http:
-            self.publisher.start()
+            self._start_background_maintenance(
+                self.publisher.start,
+                "phone-remote-discovery-publisher",
+            )
         if self.args.no_tray:
-            self._start_background_server(self.web_http, "phone-remote-web")
             print(
                 f"Phone Remote {self.identity.display_name}: {scheme}://127.0.0.1:{self.args.port}",
                 flush=True,
@@ -145,13 +146,13 @@ class ServerRuntime:
                     flush=True,
                 )
             try:
-                self.http.serve_forever(poll_interval=0.25)
+                while any(thread.is_alive() for thread in self._server_threads):
+                    for thread in self._server_threads:
+                        thread.join(timeout=0.5)
             finally:
                 self.close()
             return
 
-        self._start_background_server(self.http, "phone-remote-api")
-        self._start_background_server(self.web_http, "phone-remote-web")
         tray = TrayApplication(
             self.context,
             self.pairing_display,
@@ -192,6 +193,24 @@ class ServerRuntime:
         )
         thread.start()
         self._server_threads.append(thread)
+
+    def _start_background_maintenance(self, target: Any, name: str) -> None:
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        thread.start()
+        self._maintenance_threads.append(thread)
+
+    def _initialize_known_apps(self) -> None:
+        try:
+            added_apps = self.catalog.initialize_known_apps()
+            if added_apps:
+                self.logger.info(
+                    "initial application discovery configured apps=%s",
+                    ",".join(item["id"] for item in added_apps),
+                )
+        except Exception:
+            self.logger.exception("initial application discovery failed")
+        finally:
+            self.context.catalog_ready.set()
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -7,6 +7,7 @@ import json
 import logging
 import mimetypes
 import secrets
+import socketserver
 import threading
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -34,8 +35,16 @@ from .windows_control import ControlService
 
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_WEBSOCKET_FRAME_BYTES = 4 * 1024
-NETWORK_PROFILE_REFRESH_SECONDS = 15
+NETWORK_PROFILE_REFRESH_SECONDS = 60
 WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+REPEATABLE_ACTIONS = {
+    "up",
+    "down",
+    "left",
+    "right",
+    "volume_up",
+    "volume_down",
+}
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -46,6 +55,12 @@ STATIC_TYPES = {
     ".svg": "image/svg+xml; charset=utf-8",
     ".webp": "image/webp",
 }
+
+
+def _signaled_event() -> threading.Event:
+    event = threading.Event()
+    event.set()
+    return event
 
 
 class ApiError(Exception):
@@ -75,6 +90,7 @@ class ApiContext:
     startup_command: tuple[str, ...] = ()
     ui_language: UiLanguageStore | None = None
     admin_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
+    catalog_ready: threading.Event = field(default_factory=_signaled_event)
     _profile_lock: threading.Lock = field(default_factory=threading.Lock)
     _profile_stop: threading.Event = field(default_factory=threading.Event)
     _profile_thread: threading.Thread | None = None
@@ -84,7 +100,6 @@ class ApiContext:
         with self._profile_lock:
             if self._profile_thread is not None:
                 return
-        self._refresh_network_profile()
         thread = threading.Thread(
             target=self._monitor_network_profile,
             name="phone-remote-network-profile",
@@ -106,8 +121,16 @@ class ApiContext:
             thread.join(timeout=2)
 
     def _monitor_network_profile(self) -> None:
-        while not self._profile_stop.wait(NETWORK_PROFILE_REFRESH_SECONDS):
+        while not self._profile_stop.is_set():
             self._refresh_network_profile()
+            refresh_runtime = getattr(self.network, "refresh_runtime", None)
+            if refresh_runtime is not None:
+                try:
+                    refresh_runtime()
+                except Exception:
+                    self.logger.exception("network runtime refresh failed")
+            if self._profile_stop.wait(NETWORK_PROFILE_REFRESH_SECONDS):
+                return
 
     def _refresh_network_profile(self) -> None:
         try:
@@ -141,6 +164,15 @@ class PhoneRemoteServer(ThreadingHTTPServer):
         self.context = context
         self.allow_management = allow_management
         self.private_lan_only = private_lan_only
+
+    def server_bind(self) -> None:
+        # HTTPServer.server_bind performs a reverse-DNS lookup for the bind
+        # address. That lookup can block for many seconds on Windows when the
+        # server listens on 0.0.0.0, and this process creates two listeners.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
 
 class PhoneRemoteHandler(BaseHTTPRequestHandler):
@@ -292,6 +324,7 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
             )
         if method == "GET" and path == "/api/v1/apps":
+            context.catalog_ready.wait(timeout=10)
             try:
                 apps = context.config.public_apps()
                 warning = context.config.error
@@ -302,7 +335,8 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             data = self._read_json()
             action = data.get("action")
             result = context.control.action(action)
-            context.logger.info("control action client=%s action=%s", client_id, action)
+            log = context.logger.debug if action in REPEATABLE_ACTIONS else context.logger.info
+            log("control action client=%s action=%s", client_id, action)
             return result, HTTPStatus.OK
         if method == "POST" and path == "/api/v1/mouse":
             result = context.control.mouse(self._read_json())

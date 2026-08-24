@@ -23,6 +23,8 @@ enum RemoteConnectionPhase {
 }
 
 class PhoneRemoteController extends ChangeNotifier {
+  static const int _pointerFailureThreshold = 3;
+
   PhoneRemoteController({
     required this._deviceRepository,
     required this._discoveryService,
@@ -30,7 +32,7 @@ class PhoneRemoteController extends ChangeNotifier {
     required this._remoteSessionFactory,
     required this._wakeService,
     Future<void> Function(Duration duration)? delay,
-  })  : _delay = delay ?? _defaultDelay;
+  }) : _delay = delay ?? _defaultDelay;
 
   final DeviceRepository _deviceRepository;
   final DiscoveryService _discoveryService;
@@ -42,6 +44,8 @@ class PhoneRemoteController extends ChangeNotifier {
   List<Device> _devices = const <Device>[];
   List<DiscoveredDevice> _discoveredDevices = const <DiscoveredDevice>[];
   List<ConfiguredApp> _apps = const <ConfiguredApp>[];
+  final ValueNotifier<List<ConfiguredApp>> _appsNotifier =
+      ValueNotifier<List<ConfiguredApp>>(const <ConfiguredApp>[]);
   bool _initialized = false;
   bool _searching = false;
   Device? _selectedDevice;
@@ -49,10 +53,12 @@ class PhoneRemoteController extends ChangeNotifier {
   RemoteConnectionPhase _connectionPhase = RemoteConnectionPhase.disconnected;
   String? _connectionError;
   int _connectionGeneration = 0;
+  int _pointerFailureCount = 0;
 
   List<Device> get devices => _devices;
   List<DiscoveredDevice> get discoveredDevices => _discoveredDevices;
   List<ConfiguredApp> get apps => _apps;
+  ValueListenable<List<ConfiguredApp>> get appsListenable => _appsNotifier;
   bool get initialized => _initialized;
   bool get searching => _searching;
   Device? get selectedDevice => _selectedDevice;
@@ -73,6 +79,15 @@ class PhoneRemoteController extends ChangeNotifier {
       (device) => device.favorite,
       orElse: () => _devices.first,
     );
+  }
+
+  void _setApps(List<ConfiguredApp> value) {
+    if (listEquals(_apps, value)) {
+      return;
+    }
+    final snapshot = List<ConfiguredApp>.unmodifiable(value);
+    _apps = snapshot;
+    _appsNotifier.value = snapshot;
   }
 
   Future<void> initialize() async {
@@ -141,7 +156,8 @@ class PhoneRemoteController extends ChangeNotifier {
     _session?.close();
     _session = null;
     _selectedDevice = device;
-    _apps = const <ConfiguredApp>[];
+    _setApps(const <ConfiguredApp>[]);
+    _pointerFailureCount = 0;
     _connectionError = null;
     _connectionPhase = RemoteConnectionPhase.connecting;
     notifyListeners();
@@ -151,7 +167,10 @@ class PhoneRemoteController extends ChangeNotifier {
       return;
     } on UnauthorizedException catch (error) {
       _failConnection(
-          RemoteConnectionPhase.unauthorized, error.message, generation);
+        RemoteConnectionPhase.unauthorized,
+        error.message,
+        generation,
+      );
       return;
     } on IdentityMismatchException catch (error) {
       _failConnection(
@@ -247,39 +266,55 @@ class PhoneRemoteController extends ChangeNotifier {
       return;
     }
     _connectionPhase = RemoteConnectionPhase.connected;
+    _pointerFailureCount = 0;
     _connectionError = session.status.configOk
         ? null
         : session.status.configError ?? 'The PC configuration needs attention.';
     notifyListeners();
-    var apps = const <ConfiguredApp>[];
-    String? appsError;
-    try {
-      apps = await session.getApps();
-    } on IdentityMismatchException catch (error) {
-      session.close();
-      _failConnection(
-        RemoteConnectionPhase.identityMismatch,
-        error.message,
-        generation,
-      );
-      return;
-    } on ApiException catch (error) {
-      appsError = 'Connected, but apps could not be loaded: ${error.message}';
-    } catch (_) {
-      appsError = 'Connected, but the PC returned an invalid app list.';
-    }
-    if (generation != _connectionGeneration || !identical(_session, session)) {
-      return;
-    }
-    _apps = apps;
-    if (appsError != null) {
-      _connectionError = appsError;
-    }
+    unawaited(_loadApps(session, generation));
     await refreshDevices();
     if (generation != _connectionGeneration || !identical(_session, session)) {
       return;
     }
     notifyListeners();
+  }
+
+  Future<void> _loadApps(RemoteSession session, int generation) async {
+    try {
+      final apps = await session.getApps(
+        onUpdate: (updatedApps) {
+          if (generation != _connectionGeneration ||
+              !identical(_session, session)) {
+            return;
+          }
+          _setApps(updatedApps);
+        },
+      );
+      if (generation == _connectionGeneration && identical(_session, session)) {
+        _setApps(apps);
+      }
+    } on IdentityMismatchException catch (error) {
+      if (generation == _connectionGeneration && identical(_session, session)) {
+        session.close();
+        _failConnection(
+          RemoteConnectionPhase.identityMismatch,
+          error.message,
+          generation,
+        );
+      }
+    } on ApiException catch (error) {
+      if (generation == _connectionGeneration && identical(_session, session)) {
+        _connectionError =
+            'Connected, but apps could not be loaded: ${error.message}';
+        notifyListeners();
+      }
+    } catch (_) {
+      if (generation == _connectionGeneration && identical(_session, session)) {
+        _connectionError =
+            'Connected, but the PC returned an invalid app list.';
+        notifyListeners();
+      }
+    }
   }
 
   Future<bool> _canWake(Device device, int generation) async {
@@ -298,6 +333,8 @@ class PhoneRemoteController extends ChangeNotifier {
     }
     _session?.close();
     _session = null;
+    _setApps(const <ConfiguredApp>[]);
+    _pointerFailureCount = 0;
     _connectionPhase = phase;
     _connectionError = message;
     notifyListeners();
@@ -334,7 +371,7 @@ class PhoneRemoteController extends ChangeNotifier {
       _run((session) => session.sendAction(action));
 
   Future<void> sendMouseMove(double dx, double dy) =>
-      _run((session) => session.sendMouseMove(dx, dy));
+      _runPointer((session) => session.sendMouseMove(dx, dy));
 
   Future<void> sendMouseClick({String button = 'left'}) =>
       _run((session) => session.sendMouseClick(button: button));
@@ -343,7 +380,7 @@ class PhoneRemoteController extends ChangeNotifier {
       _run((session) => session.sendMouseDoubleClick());
 
   Future<void> sendMouseWheel(double delta) =>
-      _run((session) => session.sendMouseWheel(delta));
+      _runPointer((session) => session.sendMouseWheel(delta));
 
   Future<void> sendText(String text) =>
       _run((session) => session.sendText(text));
@@ -356,7 +393,8 @@ class PhoneRemoteController extends ChangeNotifier {
       _connectionGeneration += 1;
       activeSession?.close();
       _session = null;
-      _apps = const <ConfiguredApp>[];
+      _setApps(const <ConfiguredApp>[]);
+      _pointerFailureCount = 0;
       _connectionPhase = RemoteConnectionPhase.offline;
       _connectionError = action == 'sleep'
           ? 'The PC is in standby. Use Wake on LAN in Settings to wake it.'
@@ -369,14 +407,21 @@ class PhoneRemoteController extends ChangeNotifier {
       _run((session) => session.launchApp(appId));
 
   Future<void> _run(
-      Future<void> Function(RemoteSession session) operation) async {
+    Future<void> Function(RemoteSession session) operation,
+  ) async {
     final session = _session;
     if (session == null || !connected) {
       throw ApiException(_connectionError ?? 'Connect to a PC first.');
     }
     try {
       await operation(session);
+      if (identical(_session, session)) {
+        _pointerFailureCount = 0;
+      }
     } on UnauthorizedException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
       _connectionPhase = RemoteConnectionPhase.unauthorized;
       _connectionError = error.message;
       session.close();
@@ -384,6 +429,9 @@ class PhoneRemoteController extends ChangeNotifier {
       notifyListeners();
       rethrow;
     } on IdentityMismatchException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
       _connectionPhase = RemoteConnectionPhase.identityMismatch;
       _connectionError = error.message;
       session.close();
@@ -391,6 +439,9 @@ class PhoneRemoteController extends ChangeNotifier {
       notifyListeners();
       rethrow;
     } on ApiException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
       _connectionError = error.message;
       if (error.statusCode == null) {
         _connectionPhase = RemoteConnectionPhase.offline;
@@ -398,6 +449,60 @@ class PhoneRemoteController extends ChangeNotifier {
         _session = null;
       }
       notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> _runPointer(
+    Future<void> Function(RemoteSession session) operation,
+  ) async {
+    final session = _session;
+    if (session == null || !connected) {
+      throw ApiException(_connectionError ?? 'Connect to a PC first.');
+    }
+    try {
+      await operation(session);
+      if (identical(_session, session)) {
+        _pointerFailureCount = 0;
+      }
+    } on UnauthorizedException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
+      _connectionPhase = RemoteConnectionPhase.unauthorized;
+      _connectionError = error.message;
+      session.close();
+      _session = null;
+      notifyListeners();
+      rethrow;
+    } on IdentityMismatchException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
+      _connectionPhase = RemoteConnectionPhase.identityMismatch;
+      _connectionError = error.message;
+      session.close();
+      _session = null;
+      notifyListeners();
+      rethrow;
+    } on ApiException catch (error) {
+      if (!identical(_session, session)) {
+        rethrow;
+      }
+      if (error.statusCode != null) {
+        _pointerFailureCount = 0;
+        _connectionError = error.message;
+        notifyListeners();
+        rethrow;
+      }
+      _pointerFailureCount += 1;
+      if (_pointerFailureCount >= _pointerFailureThreshold) {
+        _connectionPhase = RemoteConnectionPhase.offline;
+        _connectionError = error.message;
+        session.close();
+        _session = null;
+        notifyListeners();
+      }
       rethrow;
     }
   }
@@ -431,7 +536,8 @@ class PhoneRemoteController extends ChangeNotifier {
       _session?.close();
       _session = null;
       _selectedDevice = null;
-      _apps = const <ConfiguredApp>[];
+      _setApps(const <ConfiguredApp>[]);
+      _pointerFailureCount = 0;
       _connectionPhase = RemoteConnectionPhase.disconnected;
       _connectionError = null;
     }
@@ -443,6 +549,7 @@ class PhoneRemoteController extends ChangeNotifier {
   void dispose() {
     _connectionGeneration += 1;
     _session?.close();
+    _appsNotifier.dispose();
     super.dispose();
   }
 }

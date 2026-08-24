@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:multicast_dns/multicast_dns.dart';
 
 class DiscoveredDevice {
@@ -57,23 +59,59 @@ class MdnsDiscoveryService implements DiscoveryService {
     Duration timeout = const Duration(seconds: 5),
   }) async {
     final client = MDnsClient();
-    final devices = <DiscoveredDevice>[];
     await client.start();
     try {
-      final pointers = client.lookup<PtrResourceRecord>(
-        ResourceRecordQuery.serverPointer(serviceType),
-        timeout: timeout,
+      final pointers = await _collectPointers(client, timeout);
+      final resolved = await Future.wait<DiscoveredDevice?>(
+        pointers.map((pointer) => _resolve(client, pointer, timeout)),
       );
-      await for (final pointer in pointers) {
-        final resolved = await _resolve(client, pointer, timeout);
-        if (resolved != null) {
-          devices.add(resolved);
-        }
-      }
+      return DiscoveryMerger.merge(resolved.whereType<DiscoveredDevice>());
     } finally {
       client.stop();
     }
-    return DiscoveryMerger.merge(devices);
+  }
+
+  Future<List<PtrResourceRecord>> _collectPointers(
+    MDnsClient client,
+    Duration timeout,
+  ) async {
+    final pointers = <PtrResourceRecord>[];
+    final completed = Completer<void>();
+    Timer? quietTimer;
+    final deadlineTimer = Timer(timeout, () {
+      if (!completed.isCompleted) completed.complete();
+    });
+    late final StreamSubscription<PtrResourceRecord> subscription;
+    subscription = client
+        .lookup<PtrResourceRecord>(
+          ResourceRecordQuery.serverPointer(serviceType),
+          timeout: timeout,
+        )
+        .listen(
+          (pointer) {
+            pointers.add(pointer);
+            quietTimer?.cancel();
+            quietTimer = Timer(const Duration(milliseconds: 600), () {
+              if (!completed.isCompleted) completed.complete();
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!completed.isCompleted) {
+              completed.completeError(error, stackTrace);
+            }
+          },
+          onDone: () {
+            if (!completed.isCompleted) completed.complete();
+          },
+        );
+    try {
+      await completed.future;
+    } finally {
+      deadlineTimer.cancel();
+      quietTimer?.cancel();
+      await subscription.cancel();
+    }
+    return pointers;
   }
 
   Future<DiscoveredDevice?> _resolve(
@@ -81,34 +119,35 @@ class MdnsDiscoveryService implements DiscoveryService {
     PtrResourceRecord pointer,
     Duration timeout,
   ) async {
-    final services = await client
-        .lookup<SrvResourceRecord>(
-          ResourceRecordQuery.service(pointer.domainName),
-          timeout: timeout,
-        )
-        .toList();
-    if (services.isEmpty) {
+    final service = await _firstOrNull<SrvResourceRecord>(
+      client.lookup<SrvResourceRecord>(
+        ResourceRecordQuery.service(pointer.domainName),
+        timeout: timeout,
+      ),
+    );
+    if (service == null) {
       return null;
     }
-    final service = services.first;
-    final addresses = await client
-        .lookup<IPAddressResourceRecord>(
-          ResourceRecordQuery.addressIPv4(service.target),
-          timeout: timeout,
-        )
-        .toList();
-    if (addresses.isEmpty) {
+    final addressFuture = _firstOrNull<IPAddressResourceRecord>(
+      client.lookup<IPAddressResourceRecord>(
+        ResourceRecordQuery.addressIPv4(service.target),
+        timeout: timeout,
+      ),
+    );
+    final textFuture = _firstOrNull<TxtResourceRecord>(
+      client.lookup<TxtResourceRecord>(
+        ResourceRecordQuery.text(pointer.domainName),
+        timeout: timeout,
+      ),
+    );
+    final address = await addressFuture;
+    final textRecord = await textFuture;
+    if (address == null) {
       return null;
     }
-    final textRecords = await client
-        .lookup<TxtResourceRecord>(
-          ResourceRecordQuery.text(pointer.domainName),
-          timeout: timeout,
-        )
-        .toList();
     final properties = <String, String>{};
-    for (final record in textRecords) {
-      for (final line in record.text.split('\n')) {
+    if (textRecord != null) {
+      for (final line in textRecord.text.split('\n')) {
         final separator = line.indexOf('=');
         if (separator > 0) {
           properties[line.substring(0, separator)] =
@@ -129,13 +168,21 @@ class MdnsDiscoveryService implements DiscoveryService {
     return DiscoveredDevice(
       serverId: serverId,
       name: name,
-      host: addresses.first.address.address,
+      host: address.address.address,
       port: service.port,
       apiVersion: apiVersion,
       tls: properties['tls'] == '1',
       serverVersion: properties['serverVersion'],
       identityHint: properties['identity'],
     );
+  }
+
+  Future<T?> _firstOrNull<T>(Stream<T> stream) async {
+    try {
+      return await stream.first;
+    } on StateError {
+      return null;
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phone_remote/application/phone_remote_controller.dart';
@@ -51,33 +52,35 @@ void main() {
     expect(controller.discoveredDevices.single.serverId, 'discovered-1');
   });
 
-  test('ordinary connect never wakes a trusted offline PC automatically',
-      () async {
-    final repository = RealDeviceRepository(
-      metadataStorage: MemoryMetadataStorage(),
-      credentialStorage: MemoryCredentialStorage(),
-    );
-    final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
-    await repository.savePaired(device, 'secret');
-    final sessions = _FlakySessionFactory();
-    final wake = _RecordingWakeService();
-    final controller = PhoneRemoteController(
-      deviceRepository: repository,
-      discoveryService: const _FakeDiscoveryService(),
-      pairingService: PairingService(
-        apiClientFactory: _apiFactory(),
+  test(
+    'ordinary connect never wakes a trusted offline PC automatically',
+    () async {
+      final repository = RealDeviceRepository(
+        metadataStorage: MemoryMetadataStorage(),
+        credentialStorage: MemoryCredentialStorage(),
+      );
+      final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
+      await repository.savePaired(device, 'secret');
+      final sessions = _FlakySessionFactory();
+      final wake = _RecordingWakeService();
+      final controller = PhoneRemoteController(
         deviceRepository: repository,
-      ),
-      remoteSessionFactory: sessions,
-      wakeService: wake,
-    );
+        discoveryService: const _FakeDiscoveryService(),
+        pairingService: PairingService(
+          apiClientFactory: _apiFactory(),
+          deviceRepository: repository,
+        ),
+        remoteSessionFactory: sessions,
+        wakeService: wake,
+      );
 
-    await controller.connect(device);
+      await controller.connect(device);
 
-    expect(controller.connectionPhase, RemoteConnectionPhase.offline);
-    expect(sessions.attempts, 1);
-    expect(wake.sent, 0);
-  });
+      expect(controller.connectionPhase, RemoteConnectionPhase.offline);
+      expect(sessions.attempts, 1);
+      expect(wake.sent, 0);
+    },
+  );
 
   test('manual Wake on LAN retries a trusted offline PC', () async {
     final repository = RealDeviceRepository(
@@ -112,14 +115,94 @@ void main() {
   });
 
   test(
-      'sleep marks the session offline and exposes manual Wake on LAN guidance',
-      () async {
+    'sleep marks the session offline and exposes manual Wake on LAN guidance',
+    () async {
+      final repository = RealDeviceRepository(
+        metadataStorage: MemoryMetadataStorage(),
+        credentialStorage: MemoryCredentialStorage(),
+      );
+      final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
+      await repository.savePaired(device, 'secret');
+      final controller = PhoneRemoteController(
+        deviceRepository: repository,
+        discoveryService: const _FakeDiscoveryService(),
+        pairingService: PairingService(
+          apiClientFactory: _apiFactory(),
+          deviceRepository: repository,
+        ),
+        remoteSessionFactory: _AlwaysConnectedSessionFactory(),
+        wakeService: _RecordingWakeService(),
+      );
+      await controller.connect(device);
+
+      await controller.sendPowerAction('sleep');
+
+      expect(controller.connectionPhase, RemoteConnectionPhase.offline);
+      expect(controller.connectionError, contains('Wake on LAN'));
+    },
+  );
+
+  test(
+    'transient pointer failures do not immediately close the session',
+    () async {
+      final repository = RealDeviceRepository(
+        metadataStorage: MemoryMetadataStorage(),
+        credentialStorage: MemoryCredentialStorage(),
+      );
+      final device = _device('pointer');
+      await repository.savePaired(device, 'secret');
+      final session = _PointerFailureSession(device, remainingFailures: 2);
+      final controller = PhoneRemoteController(
+        deviceRepository: repository,
+        discoveryService: const _FakeDiscoveryService(),
+        pairingService: PairingService(
+          apiClientFactory: _apiFactory(),
+          deviceRepository: repository,
+        ),
+        remoteSessionFactory: _SingleSessionFactory(session),
+        wakeService: const UnavailableWakeService('Unavailable in tests.'),
+      );
+      await controller.connect(device);
+
+      await expectLater(
+        controller.sendMouseMove(1, 1),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        controller.sendMouseMove(1, 1),
+        throwsA(isA<ApiException>()),
+      );
+      expect(controller.connected, isTrue);
+      expect(session.closed, isFalse);
+
+      await controller.sendMouseMove(1, 1);
+      session.remainingFailures = 3;
+      await expectLater(
+        controller.sendMouseMove(1, 1),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        controller.sendMouseMove(1, 1),
+        throwsA(isA<ApiException>()),
+      );
+      expect(controller.connected, isTrue);
+      await expectLater(
+        controller.sendMouseMove(1, 1),
+        throwsA(isA<ApiException>()),
+      );
+      expect(controller.connectionPhase, RemoteConnectionPhase.offline);
+      expect(session.closed, isTrue);
+    },
+  );
+
+  test('progressive app icons notify only the app-list listener', () async {
     final repository = RealDeviceRepository(
       metadataStorage: MemoryMetadataStorage(),
       credentialStorage: MemoryCredentialStorage(),
     );
-    final device = _device('sleeping').copyWith(mac: '00:11:22:33:44:55');
+    final device = _device('apps');
     await repository.savePaired(device, 'secret');
+    final session = _ProgressiveAppsSession(device);
     final controller = PhoneRemoteController(
       deviceRepository: repository,
       discoveryService: const _FakeDiscoveryService(),
@@ -127,15 +210,21 @@ void main() {
         apiClientFactory: _apiFactory(),
         deviceRepository: repository,
       ),
-      remoteSessionFactory: _AlwaysConnectedSessionFactory(),
-      wakeService: _RecordingWakeService(),
+      remoteSessionFactory: _SingleSessionFactory(session),
+      wakeService: const UnavailableWakeService('Unavailable in tests.'),
     );
     await controller.connect(device);
+    var controllerChanges = 0;
+    var appChanges = 0;
+    controller.addListener(() => controllerChanges += 1);
+    controller.appsListenable.addListener(() => appChanges += 1);
 
-    await controller.sendPowerAction('sleep');
+    session.publishIcon();
+    await Future<void>.delayed(Duration.zero);
 
-    expect(controller.connectionPhase, RemoteConnectionPhase.offline);
-    expect(controller.connectionError, contains('Wake on LAN'));
+    expect(controllerChanges, 0);
+    expect(appChanges, 1);
+    expect(controller.apps.single.iconBytes, isNotNull);
   });
 
   test('an old wake retry cannot overwrite a newer PC connection', () async {
@@ -206,6 +295,8 @@ void main() {
 
     final firstConnection = controller.connect(first, autoWake: false);
     await oldAppsStarted.future;
+    await firstConnection.timeout(const Duration(seconds: 1));
+    expect(controller.connectionPhase, RemoteConnectionPhase.connected);
     await controller.connect(second, autoWake: false);
     expect(controller.apps.single.id, 'second-app');
 
@@ -245,23 +336,23 @@ PhoneRemoteController _controller(
 }
 
 FakeApiClientFactory _apiFactory() => FakeApiClientFactory(
-      info: ServerInfo(
-        serverId: 'server',
-        name: 'PC',
-        version: '1.0.0',
-        apiVersion: 1,
-        pairing: true,
-        identityFingerprint: 'a' * 64,
-        certificateFingerprint: 'b' * 64,
-      ),
-      session: const PairingSession(sessionId: 'session', expiresIn: 300),
-      result: PairingResult(
-        clientId: 'client',
-        credential: 'secret',
-        serverId: 'server',
-        identityFingerprint: 'a' * 64,
-      ),
-    );
+  info: ServerInfo(
+    serverId: 'server',
+    name: 'PC',
+    version: '1.0.0',
+    apiVersion: 1,
+    pairing: true,
+    identityFingerprint: 'a' * 64,
+    certificateFingerprint: 'b' * 64,
+  ),
+  session: const PairingSession(sessionId: 'session', expiresIn: 300),
+  result: PairingResult(
+    clientId: 'client',
+    credential: 'secret',
+    serverId: 'server',
+    identityFingerprint: 'a' * 64,
+  ),
+);
 
 Device _device(String serverId, {bool favorite = false}) {
   return Device(
@@ -318,6 +409,15 @@ class _AlwaysConnectedSessionFactory implements RemoteSessionFactory {
       _TestRemoteSession(device);
 }
 
+class _SingleSessionFactory implements RemoteSessionFactory {
+  const _SingleSessionFactory(this.session);
+
+  final RemoteSession session;
+
+  @override
+  Future<RemoteSession> connect(Device device) async => session;
+}
+
 class _SwitchingSessionFactory implements RemoteSessionFactory {
   var _firstAttempts = 0;
 
@@ -359,7 +459,7 @@ class _BlockingAppsSession extends _TestRemoteSession {
   final Completer<List<ConfiguredApp>> result;
 
   @override
-  Future<List<ConfiguredApp>> getApps() {
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) {
     if (!started.isCompleted) {
       started.complete();
     }
@@ -373,7 +473,59 @@ class _ConfiguredAppsSession extends _TestRemoteSession {
   final List<ConfiguredApp> configuredApps;
 
   @override
-  Future<List<ConfiguredApp>> getApps() async => configuredApps;
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) async {
+    onUpdate?.call(configuredApps);
+    return configuredApps;
+  }
+}
+
+class _ProgressiveAppsSession extends _TestRemoteSession {
+  _ProgressiveAppsSession(super.device);
+
+  static const _metadata = <ConfiguredApp>[
+    ConfiguredApp(
+      id: 'browser',
+      name: 'Browser',
+      available: true,
+      icon: '/browser.png',
+    ),
+  ];
+  final Completer<List<ConfiguredApp>> _result =
+      Completer<List<ConfiguredApp>>();
+  AppsUpdateHandler? _onUpdate;
+
+  @override
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) {
+    _onUpdate = onUpdate;
+    onUpdate?.call(_metadata);
+    return _result.future;
+  }
+
+  void publishIcon() {
+    final apps = <ConfiguredApp>[
+      _metadata.single.withIconBytes(Uint8List.fromList(<int>[1, 2, 3])),
+    ];
+    _onUpdate?.call(apps);
+    _result.complete(apps);
+  }
+}
+
+class _PointerFailureSession extends _TestRemoteSession {
+  _PointerFailureSession(super.device, {required this.remainingFailures});
+
+  int remainingFailures;
+  bool closed = false;
+
+  @override
+  Future<void> sendMouseMove(double dx, double dy) async {
+    if (remainingFailures > 0) {
+      remainingFailures -= 1;
+      throw const ApiException('Temporary network failure.');
+    }
+  }
+
+  @override
+  void close() => closed = true;
 }
 
 class _TestRemoteSession implements RemoteSession {
@@ -384,20 +536,24 @@ class _TestRemoteSession implements RemoteSession {
 
   @override
   ServerStatus get status => ServerStatus(
-        serverId: device.serverId,
-        name: device.name,
-        version: '1.0.0',
-        apiVersion: 1,
-        addresses: const <String>['192.168.1.20'],
-        port: 8765,
-        configOk: true,
-      );
+    serverId: device.serverId,
+    name: device.name,
+    version: '1.0.0',
+    apiVersion: 1,
+    addresses: const <String>['192.168.1.20'],
+    port: 8765,
+    configOk: true,
+  );
 
   @override
   void close() {}
 
   @override
-  Future<List<ConfiguredApp>> getApps() async => const <ConfiguredApp>[];
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) async {
+    const apps = <ConfiguredApp>[];
+    onUpdate?.call(apps);
+    return apps;
+  }
 
   @override
   Future<void> launchApp(String appId) async {}

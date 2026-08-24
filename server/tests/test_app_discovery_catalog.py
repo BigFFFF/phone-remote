@@ -17,8 +17,10 @@ class Provider:
 
     def __init__(self, candidates):
         self.candidates = candidates
+        self.calls = 0
 
     def discover(self):
+        self.calls += 1
         return list(self.candidates)
 
 
@@ -177,11 +179,8 @@ def test_initial_discovery_configures_edge_and_steam_once(catalog_setup) -> None
             confidence=90,
         ),
     ]
-    catalog = ApplicationCatalog(
-        store,
-        ApplicationDiscovery([Provider(candidates)]),
-        default_icon,
-    )
+    provider = Provider(candidates)
+    catalog = ApplicationCatalog(store, ApplicationDiscovery([provider]), default_icon)
 
     added = catalog.initialize_known_apps()
 
@@ -191,7 +190,9 @@ def test_initial_discovery_configures_edge_and_steam_once(catalog_setup) -> None
     assert config["browsers"]["edge"]["path"] == str(edge)
     assert config["apps"][1]["launch"]["args"] == ["steam://open/bigpicture"]
     assert config["initialDiscoveryComplete"] is True
+    assert provider.calls == 1
     assert catalog.initialize_known_apps() == []
+    assert provider.calls == 1
 
 
 def test_initial_discovery_prefers_launcher_and_repairs_legacy_steam_uninstaller(

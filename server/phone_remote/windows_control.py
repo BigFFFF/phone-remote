@@ -240,12 +240,19 @@ class ControlService:
     def __init__(self, backend: ControlBackend, launcher: AppLauncher):
         self.backend = backend
         self.launcher = launcher
-        self._lock = threading.RLock()
+        # Keep ordering only where it is semantically required. Keyboard input
+        # must not interleave with a key combination, and mouse input must keep
+        # fractional movement/double-click state ordered, but neither should
+        # stall the other device while a key is being held down.
+        self._keyboard_lock = threading.RLock()
+        self._mouse_lock = threading.RLock()
+        self._launcher_lock = threading.Lock()
+        self._power_lock = threading.Lock()
 
     def action(self, action: Any) -> dict[str, Any]:
         if not isinstance(action, str) or len(action) > 80:
             raise ValueError("invalid action")
-        with self._lock:
+        with self._keyboard_lock:
             if action == "desktop":
                 self.backend.key_combo(VK_LWIN, VK_D)
             elif action == "close_active":
@@ -259,7 +266,7 @@ class ControlService:
     def launch_app(self, app_id: Any) -> dict[str, Any]:
         if not isinstance(app_id, str) or not app_id or len(app_id) > 32:
             raise ValueError("invalid app id")
-        with self._lock:
+        with self._launcher_lock:
             self.launcher.launch(app_id)
         return {"ok": True, "message": app_id}
 
@@ -267,7 +274,7 @@ class ControlService:
         if not isinstance(data, dict):
             raise ValueError("mouse body must be an object")
         kind = data.get("type")
-        with self._lock:
+        with self._mouse_lock:
             if kind == "move":
                 dx = _clamp_float(data.get("dx", 0), -MAX_MOUSE_MOVE, MAX_MOUSE_MOVE)
                 dy = _clamp_float(data.get("dy", 0), -MAX_MOUSE_MOVE, MAX_MOUSE_MOVE)
@@ -293,14 +300,14 @@ class ControlService:
             raise ValueError("text must be a string")
         if len(value) > MAX_TEXT_LENGTH:
             raise ValueError("text is too long")
-        with self._lock:
+        with self._keyboard_lock:
             self.backend.text(value)
         return {"ok": True, "message": "text"}
 
     def power(self, action: Any) -> dict[str, Any]:
         if action not in {"sleep", "hibernate", "restart", "shutdown"}:
             raise ValueError("unknown power action")
-        with self._lock:
+        with self._power_lock:
             self.backend.power(action)
         return {"ok": True, "message": str(action)}
 

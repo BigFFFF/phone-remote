@@ -54,6 +54,8 @@ class ApplicationCatalog:
         """Auto-configure Edge and Steam once and repair a legacy bad Steam choice."""
         with self._lock:
             config = self.config.get()
+            if config["initialDiscoveryComplete"] and not self._needs_legacy_steam_repair(config):
+                return []
             candidates = self.discovery.scan()
             self.icons.populate_candidates(candidates)
             self._candidates = {item.discovery_id: item for item in candidates}
@@ -98,6 +100,26 @@ class ApplicationCatalog:
             config["initialDiscoveryComplete"] = True
             self.config.write(config)
             return added
+
+    @staticmethod
+    def _needs_legacy_steam_repair(config: dict[str, Any]) -> bool:
+        for app in config["apps"]:
+            launch = app.get("launch", {})
+            if (
+                app.get("id") != "steam"
+                or str(app.get("name", "")).casefold() != "steam"
+                or launch.get("type") != "program"
+            ):
+                continue
+            executable = Path(os.path.expandvars(str(launch.get("path", "")))).stem
+            return bool(
+                re.match(
+                    r"^(?:unins\d*.*|uninst(?:all|aller)?.*|setup|installer|install|remove|repair)",
+                    executable,
+                    re.IGNORECASE,
+                )
+            )
+        return False
 
     @staticmethod
     def _best_known_candidate(

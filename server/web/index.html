@@ -439,7 +439,7 @@
       language = event.target.value;
       localStorage.setItem('phone-remote-language', language);
       applyLanguage();
-      setConnection(dot.classList.contains('connected'));
+      setConnection(dot.classList.contains('connected'), true);
       appsSignature = '';
       if (credential) refreshApps(); else renderApps([]);
     });
@@ -470,6 +470,10 @@
     let wakeLock = null;
     let appsSignature = '';
     let lastConfigWarning = '';
+    let activeView = 'remote';
+    let statusRefreshPromise = null;
+    let appsRefreshPromise = null;
+    let connectionState = null;
 
     function vibrate(duration = 8) {
       if (navigator.vibrate) navigator.vibrate(duration);
@@ -480,7 +484,10 @@
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
     }
-    function setConnection(connected) {
+    function setConnection(connected, force = false) {
+      connected = Boolean(connected);
+      if (!force && connectionState === connected) return;
+      connectionState = connected;
       dot.classList.toggle('connected', connected);
       statusText.textContent = connected ? t('connected') : t('disconnected');
     }
@@ -674,15 +681,19 @@
         keyboardInput.focus();
       }
     }
-    async function refresh() {
-      if (!credential) return;
-      try {
-        const response = await apiFetch('/api/v1/status', { cache: 'no-store' });
-        const data = await response.json();
-        setConnection(Boolean(data.ok));
-      } catch {
-        setConnection(false);
-      }
+    function refresh() {
+      if (!credential) return Promise.resolve();
+      if (statusRefreshPromise) return statusRefreshPromise;
+      statusRefreshPromise = (async () => {
+        try {
+          const response = await apiFetch('/api/v1/status', { cache: 'no-store' });
+          const data = await response.json();
+          setConnection(Boolean(data.ok));
+        } catch {
+          setConnection(false);
+        }
+      })().finally(() => { statusRefreshPromise = null; });
+      return statusRefreshPromise;
     }
     function renderApps(apps) {
       appGrid.replaceChildren();
@@ -717,27 +728,32 @@
       });
       appGrid.append(fragment);
     }
-    async function refreshApps() {
-      if (!credential) return;
-      try {
-        const response = await apiFetch('/api/v1/apps', { cache: 'no-store' });
-        const data = await response.json();
-        if (!response.ok || !data.ok) throw new Error(data.error || t('appsUnavailable'));
-        const signature = JSON.stringify(data.apps);
-        if (signature !== appsSignature) {
-          renderApps(data.apps);
-          appsSignature = signature;
+    function refreshApps() {
+      if (!credential) return Promise.resolve();
+      if (appsRefreshPromise) return appsRefreshPromise;
+      appsRefreshPromise = (async () => {
+        try {
+          const response = await apiFetch('/api/v1/apps', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || t('appsUnavailable'));
+          const signature = JSON.stringify(data.apps);
+          if (signature !== appsSignature) {
+            renderApps(data.apps);
+            appsSignature = signature;
+          }
+          if (data.warning && data.warning !== lastConfigWarning) {
+            showToast(t('configWarning', data.warning), 2600);
+          }
+          lastConfigWarning = data.warning || '';
+        } catch (error) {
+          if (!appsSignature) renderApps([]);
+          showToast(error.message || t('appsLoadFailed'), 2000);
         }
-        if (data.warning && data.warning !== lastConfigWarning) {
-          showToast(t('configWarning', data.warning), 2600);
-        }
-        lastConfigWarning = data.warning || '';
-      } catch (error) {
-        if (!appsSignature) renderApps([]);
-        showToast(error.message || t('appsLoadFailed'), 2000);
-      }
+      })().finally(() => { appsRefreshPromise = null; });
+      return appsRefreshPromise;
     }
     function switchView(name) {
+      activeView = name;
       document.querySelectorAll('.view').forEach((view) => {
         view.classList.toggle('active', view.id === `view-${name}`);
       });
@@ -747,6 +763,7 @@
         button.setAttribute('aria-current', active ? 'page' : 'false');
       });
       localStorage.setItem('settop-view', name);
+      if (name === 'apps' && credential) refreshApps();
     }
     function showPowerMenu() {
       pendingAction = null;
@@ -810,19 +827,30 @@
     });
     document.querySelectorAll('[data-repeat]').forEach((button) => {
       let delayTimer = 0;
-      let repeatTimer = 0;
+      let holding = false;
+      let repeatGeneration = 0;
       const stop = () => {
         clearTimeout(delayTimer);
-        clearInterval(repeatTimer);
+        holding = false;
+        repeatGeneration += 1;
         button.classList.remove('is-pressed');
+      };
+      const repeatAction = async (generation) => {
+        while (holding && generation === repeatGeneration) {
+          await send(button.dataset.action);
+          if (!holding || generation !== repeatGeneration) return;
+          await new Promise(resolve => setTimeout(resolve, 110));
+        }
       };
       button.addEventListener('pointerdown', () => {
         button._suppressClick = false;
         button.classList.add('is-pressed');
+        holding = true;
+        const generation = ++repeatGeneration;
         delayTimer = setTimeout(() => {
+          if (!holding || generation !== repeatGeneration) return;
           button._suppressClick = true;
-          send(button.dataset.action);
-          repeatTimer = setInterval(() => send(button.dataset.action), 110);
+          repeatAction(generation);
         }, 430);
       });
       button.addEventListener('pointerup', stop);
@@ -836,9 +864,12 @@
     const tapSlop = 6;
     const pointerTraffic = {
       moveX: 0, moveY: 0, wheel: 0,
-      scheduled: 0, inFlight: 0, maxInFlight: 2,
+      scheduled: 0, inFlight: 0, maxInFlight: 1,
       lastFailureToast: 0
     };
+    const pointerBufferLimit = 32 * 1024;
+    const pendingMoveLimit = 240;
+    const pendingWheelLimit = 960;
     function hasPendingPointerTraffic() {
       return Math.abs(pointerTraffic.moveX) >= 0.01 ||
         Math.abs(pointerTraffic.moveY) >= 0.01 ||
@@ -850,12 +881,12 @@
       }
     }
     function queueMove(dx, dy) {
-      pointerTraffic.moveX += dx * 1.55;
-      pointerTraffic.moveY += dy * 1.55;
+      pointerTraffic.moveX = takeBounded(pointerTraffic.moveX + dx * 1.55, pendingMoveLimit);
+      pointerTraffic.moveY = takeBounded(pointerTraffic.moveY + dy * 1.55, pendingMoveLimit);
       schedulePointerFlush();
     }
     function queueWheel(delta) {
-      pointerTraffic.wheel += delta * 9;
+      pointerTraffic.wheel = takeBounded(pointerTraffic.wheel + delta * 9, pendingWheelLimit);
       schedulePointerFlush();
     }
     function takeBounded(value, limit) {
@@ -864,6 +895,11 @@
     function flushPointerTraffic() {
       pointerTraffic.scheduled = 0;
       if (pointerTraffic.inFlight >= pointerTraffic.maxInFlight) {
+        schedulePointerFlush();
+        return;
+      }
+      if (pointerSocket?.readyState === WebSocket.OPEN &&
+          pointerSocket.bufferedAmount >= pointerBufferLimit) {
         schedulePointerFlush();
         return;
       }
@@ -985,7 +1021,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         refresh();
-        refreshApps();
+        if (activeView === 'apps') refreshApps();
         keepAwake();
       }
     });
@@ -994,8 +1030,12 @@
     switchView(['remote', 'touch', 'apps', 'keyboard'].includes(savedView) ? savedView : 'remote');
     verifyServerIdentity().then(valid => { if (valid) { refresh(); refreshApps(); } });
     keepAwake();
-    setInterval(refresh, 4000);
-    setInterval(refreshApps, 5000);
+    setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 15000);
+    setInterval(() => {
+      if (document.visibilityState === 'visible' && activeView === 'apps') refreshApps();
+    }, 60000);
   </script>
 </body>
 </html>

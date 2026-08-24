@@ -108,7 +108,7 @@ def test_physical_address_cache_refreshes_after_its_ttl(monkeypatch) -> None:
     assert network._windows_physical_ipv4_addresses() == ("192.168.1.20",)
     now[0] += 2
     assert network._windows_physical_ipv4_addresses() == ("192.168.1.21",)
-    assert calls == [100.0, 116.0]
+    assert calls == [100.0, 100.0 + network.PHYSICAL_ADDRESS_CACHE_SECONDS + 1]
 
 
 def test_browser_listener_has_a_separate_default_port() -> None:
@@ -200,15 +200,28 @@ def test_web_pairing_ignores_only_responses_from_replaced_credentials() -> None:
     reset = page.index("pairingSessionId = '';", success)
     refresh = page.index("refresh(); refreshApps();", success)
     assert success < reset < refresh
-    assert page.count("if (!credential) return;") >= 2
+    assert page.count("if (!credential) return Promise.resolve();") >= 2
+    assert "if (statusRefreshPromise) return statusRefreshPromise;" in page
+    assert "if (appsRefreshPromise) return appsRefreshPromise;" in page
 
 
 def test_web_touchpad_coalesces_input_and_bounds_request_concurrency() -> None:
     page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
     assert "event.getCoalescedEvents()" in page
-    assert "maxInFlight: 2" in page
+    assert "maxInFlight: 1" in page
+    assert "pointerSocket.bufferedAmount >= pointerBufferLimit" in page
+    assert "pendingMoveLimit = 240" in page
     assert "requestAnimationFrame(flushPointerTraffic)" in page
     assert "sendMouse({ type: 'click', button: 'right' })" in page
+
+
+def test_web_polling_and_key_repeat_apply_backpressure() -> None:
+    page = (REPOSITORY_ROOT / "server" / "web" / "index.html").read_text(encoding="utf-8")
+    assert "if (statusRefreshPromise) return statusRefreshPromise;" in page
+    assert "if (appsRefreshPromise) return appsRefreshPromise;" in page
+    assert "document.visibilityState === 'visible' && activeView === 'apps'" in page
+    assert "await send(button.dataset.action);" in page
+    assert "repeatTimer" not in page
     assert "endPointer(event, true)" in page
 
 

@@ -19,7 +19,8 @@ from .subprocess_utils import hidden_window_kwargs
 API_FIREWALL_RULE = "Phone Remote API"
 DISCOVERY_FIREWALL_RULE = "Phone Remote Discovery"
 STARTUP_VALUE_NAME = "Phone Remote"
-PHYSICAL_ADDRESS_CACHE_SECONDS = 15.0
+PHYSICAL_ADDRESS_CACHE_SECONDS = 5 * 60.0
+WAKE_TARGET_CACHE_SECONDS = 5 * 60.0
 
 _physical_address_cache: tuple[str, ...] = ()
 _physical_address_cached_at = float("-inf")
@@ -140,9 +141,15 @@ class NetworkDiagnostics:
     def __init__(self) -> None:
         self._wake_targets_cache: list[dict[str, str]] = []
         self._wake_targets_cached_at = 0.0
+        self._wake_targets_cache_lock = threading.Lock()
 
     def addresses(self) -> list[str]:
         return local_ipv4_addresses()
+
+    def refresh_runtime(self) -> None:
+        """Warm expensive status data outside HTTP request threads."""
+        self.addresses()
+        self.wake_targets()
 
     def start_with_windows(self) -> bool:
         return start_with_windows_enabled()
@@ -220,78 +227,79 @@ class NetworkDiagnostics:
     def wake_targets(self) -> list[dict[str, str]]:
         if sys.platform != "win32":
             return []
-        now = time.monotonic()
-        if now - self._wake_targets_cached_at < 60:
-            return list(self._wake_targets_cache)
-        script = (
-            "$items=Get-NetIPConfiguration -ErrorAction SilentlyContinue | "
-            "Where-Object {$_.NetAdapter.Status -eq 'Up' -and $_.NetAdapter.HardwareInterface};"
-            "$items|ForEach-Object{$adapter=$_.NetAdapter;"
-            "$_.IPv4Address|ForEach-Object{[pscustomobject]@{mac=$adapter.MacAddress;"
-            "address=$_.IPAddress;prefixLength=$_.PrefixLength}}}|ConvertTo-Json -Compress"
-        )
-        try:
-            completed = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=10,
-                check=False,
-                shell=False,
-                **hidden_window_kwargs(),
+        with self._wake_targets_cache_lock:
+            now = time.monotonic()
+            if now - self._wake_targets_cached_at < WAKE_TARGET_CACHE_SECONDS:
+                return list(self._wake_targets_cache)
+            script = (
+                "$items=Get-NetIPConfiguration -ErrorAction SilentlyContinue | "
+                "Where-Object {$_.NetAdapter.Status -eq 'Up' -and $_.NetAdapter.HardwareInterface};"
+                "$items|ForEach-Object{$adapter=$_.NetAdapter;"
+                "$_.IPv4Address|ForEach-Object{[pscustomobject]@{mac=$adapter.MacAddress;"
+                "address=$_.IPAddress;prefixLength=$_.PrefixLength}}}|ConvertTo-Json -Compress"
             )
-        except (OSError, subprocess.SubprocessError):
-            self._wake_targets_cached_at = now
-            return list(self._wake_targets_cache)
-        if completed.returncode or not completed.stdout.strip():
-            self._wake_targets_cached_at = now
-            return list(self._wake_targets_cache)
-        try:
-            value: Any = json.loads(completed.stdout)
-        except json.JSONDecodeError:
-            self._wake_targets_cached_at = now
-            return list(self._wake_targets_cache)
-        entries = value if isinstance(value, list) else [value]
-        targets: list[dict[str, str]] = []
-        seen: set[tuple[str, str]] = set()
-        for item in entries:
-            if not isinstance(item, dict):
-                continue
             try:
-                address = ipaddress.IPv4Address(str(item.get("address", "")))
-                prefix_length = int(item.get("prefixLength", -1))
-                network = ipaddress.IPv4Network(f"{address}/{prefix_length}", strict=False)
-            except (
-                ipaddress.AddressValueError,
-                ipaddress.NetmaskValueError,
-                TypeError,
-                ValueError,
-            ):
-                continue
-            raw_mac = "".join(
-                character for character in str(item.get("mac", "")) if character.isalnum()
-            )
-            if len(raw_mac) != 12 or any(
-                character not in "0123456789abcdefABCDEF" for character in raw_mac
-            ):
-                continue
-            mac = ":".join(raw_mac[index : index + 2] for index in range(0, 12, 2)).upper()
-            key = (mac, str(address))
-            if key in seen:
-                continue
-            seen.add(key)
-            targets.append(
-                {
-                    "mac": mac,
-                    "address": str(address),
-                    "broadcast": str(network.broadcast_address),
-                }
-            )
-        self._wake_targets_cache = targets
-        self._wake_targets_cached_at = now
-        return list(targets)
+                completed = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=10,
+                    check=False,
+                    shell=False,
+                    **hidden_window_kwargs(),
+                )
+            except (OSError, subprocess.SubprocessError):
+                self._wake_targets_cached_at = now
+                return list(self._wake_targets_cache)
+            if completed.returncode or not completed.stdout.strip():
+                self._wake_targets_cached_at = now
+                return list(self._wake_targets_cache)
+            try:
+                value: Any = json.loads(completed.stdout)
+            except json.JSONDecodeError:
+                self._wake_targets_cached_at = now
+                return list(self._wake_targets_cache)
+            entries = value if isinstance(value, list) else [value]
+            targets: list[dict[str, str]] = []
+            seen: set[tuple[str, str]] = set()
+            for item in entries:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    address = ipaddress.IPv4Address(str(item.get("address", "")))
+                    prefix_length = int(item.get("prefixLength", -1))
+                    network = ipaddress.IPv4Network(f"{address}/{prefix_length}", strict=False)
+                except (
+                    ipaddress.AddressValueError,
+                    ipaddress.NetmaskValueError,
+                    TypeError,
+                    ValueError,
+                ):
+                    continue
+                raw_mac = "".join(
+                    character for character in str(item.get("mac", "")) if character.isalnum()
+                )
+                if len(raw_mac) != 12 or any(
+                    character not in "0123456789abcdefABCDEF" for character in raw_mac
+                ):
+                    continue
+                mac = ":".join(raw_mac[index : index + 2] for index in range(0, 12, 2)).upper()
+                key = (mac, str(address))
+                if key in seen:
+                    continue
+                seen.add(key)
+                targets.append(
+                    {
+                        "mac": mac,
+                        "address": str(address),
+                        "broadcast": str(network.broadcast_address),
+                    }
+                )
+            self._wake_targets_cache = targets
+            self._wake_targets_cached_at = now
+            return list(targets)
 
 
 def firewall_install_commands(

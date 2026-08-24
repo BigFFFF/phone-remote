@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../application/phone_remote_controller.dart';
 import '../localization.dart';
+import '../models/api_models.dart';
 import '../models/device.dart';
 import '../services/pointer_move_dispatcher.dart';
 import '../services/touchpad_settings.dart';
@@ -20,8 +21,8 @@ class RemoteShell extends StatefulWidget {
   });
 
   const RemoteShell.demo({super.key, this.touchpadSettingsStore})
-      : controller = null,
-        demo = true;
+    : controller = null,
+      demo = true;
 
   final PhoneRemoteController? controller;
   final bool demo;
@@ -70,7 +71,8 @@ class _RemoteShellState extends State<RemoteShell> {
 
   void _saveTouchpadSettings() {
     unawaited(
-        _touchpadSettingsStore.save(_touchpadSettings).catchError((_) {}));
+      _touchpadSettingsStore.save(_touchpadSettings).catchError((_) {}),
+    );
   }
 
   @override
@@ -104,8 +106,9 @@ class _RemoteShellState extends State<RemoteShell> {
     ];
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text(widget.demo ? 'Phone Remote' : device?.name ?? 'Phone Remote'),
+        title: Text(
+          widget.demo ? 'Phone Remote' : device?.name ?? 'Phone Remote',
+        ),
         actions: <Widget>[
           if (widget.demo)
             Padding(
@@ -159,40 +162,40 @@ class _ConnectionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, icon) = switch (controller.connectionPhase) {
       RemoteConnectionPhase.connected => (
-          context.tr('Online'),
-          Colors.green,
-          Icons.check_circle,
-        ),
+        context.tr('Online'),
+        Colors.green,
+        Icons.check_circle,
+      ),
       RemoteConnectionPhase.connecting => (
-          context.tr('Connecting'),
-          Colors.orange,
-          Icons.sync,
-        ),
+        context.tr('Connecting'),
+        Colors.orange,
+        Icons.sync,
+      ),
       RemoteConnectionPhase.waking => (
-          context.tr('Waking'),
-          Colors.orange,
-          Icons.power_settings_new,
-        ),
+        context.tr('Waking'),
+        Colors.orange,
+        Icons.power_settings_new,
+      ),
       RemoteConnectionPhase.identityMismatch => (
-          context.tr('Identity alert'),
-          Colors.red,
-          Icons.gpp_bad,
-        ),
+        context.tr('Identity alert'),
+        Colors.red,
+        Icons.gpp_bad,
+      ),
       RemoteConnectionPhase.unauthorized => (
-          context.tr('Pair again'),
-          Colors.red,
-          Icons.lock_reset,
-        ),
+        context.tr('Pair again'),
+        Colors.red,
+        Icons.lock_reset,
+      ),
       RemoteConnectionPhase.offline => (
-          context.tr('Offline'),
-          Colors.grey,
-          Icons.cloud_off,
-        ),
+        context.tr('Offline'),
+        Colors.grey,
+        Icons.cloud_off,
+      ),
       RemoteConnectionPhase.disconnected => (
-          context.tr('Disconnected'),
-          Colors.grey,
-          Icons.link_off,
-        ),
+        context.tr('Disconnected'),
+        Colors.grey,
+        Icons.link_off,
+      ),
     };
     return Chip(
       avatar: Icon(icon, color: color, size: 18),
@@ -236,6 +239,7 @@ class _RemotePageState extends State<_RemotePage> {
     _wheel = PointerMoveDispatcher(
       send: (_, delta) =>
           widget.controller?.sendMouseWheel(delta) ?? Future.value(),
+      maxAbsoluteDelta: 480,
       onError: _handleDispatcherError,
     );
   }
@@ -262,9 +266,7 @@ class _RemotePageState extends State<_RemotePage> {
     _lastDispatcherErrorAt = now;
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(content: Text('$error')),
-    );
+    messenger.showSnackBar(SnackBar(content: Text('$error')));
   }
 
   void _setLastAction(String label) {
@@ -290,9 +292,8 @@ class _RemotePageState extends State<_RemotePage> {
       await operation(controller);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     }
   }
@@ -499,7 +500,9 @@ class _RemotePageState extends State<_RemotePage> {
         onAction: (label, action) =>
             _invoke(label, (controller) => controller.sendAction(action)),
         onSend: (text) => _invoke(
-            context.tr('Text sent'), (controller) => controller.sendText(text)),
+          context.tr('Text sent'),
+          (controller) => controller.sendText(text),
+        ),
       ),
     );
   }
@@ -617,7 +620,7 @@ class _ConnectionBanner extends StatelessWidget {
     }
     final busy =
         controller.connectionPhase == RemoteConnectionPhase.connecting ||
-            controller.connectionPhase == RemoteConnectionPhase.waking;
+        controller.connectionPhase == RemoteConnectionPhase.waking;
     final identityAlert =
         controller.connectionPhase == RemoteConnectionPhase.identityMismatch;
     return Card(
@@ -641,10 +644,10 @@ class _ConnectionBanner extends StatelessWidget {
               child: Text(
                 busy
                     ? controller.connectionPhase == RemoteConnectionPhase.waking
-                        ? context.tr('Sending Wake on LAN…')
-                        : context.tr('Connecting securely…')
+                          ? context.tr('Sending Wake on LAN…')
+                          : context.tr('Connecting securely…')
                     : controller.connectionError ??
-                        context.tr('Not connected.'),
+                          context.tr('Not connected.'),
               ),
             ),
             if (!busy && !identityAlert)
@@ -698,8 +701,9 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
       _travel = 0;
     }
     _positions[event.pointer] = event.localPosition;
-    _maxPointers =
-        _positions.length > _maxPointers ? _positions.length : _maxPointers;
+    _maxPointers = _positions.length > _maxPointers
+        ? _positions.length
+        : _maxPointers;
   }
 
   void _move(PointerMoveEvent event) {
@@ -759,9 +763,9 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
         gestures: <Type, GestureRecognizerFactory>{
           EagerGestureRecognizer:
               GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
-            EagerGestureRecognizer.new,
-            (_) {},
-          ),
+                EagerGestureRecognizer.new,
+                (_) {},
+              ),
         },
         child: Listener(
           behavior: HitTestBehavior.opaque,
@@ -794,7 +798,7 @@ class _TouchpadSurfaceState extends State<_TouchpadSurface> {
 class _Dpad extends StatelessWidget {
   const _Dpad({required this.onAction});
 
-  final void Function(String label, String action) onAction;
+  final Future<void> Function(String label, String action) onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -835,7 +839,7 @@ class _RoundControl extends StatefulWidget {
   const _RoundControl({required this.icon, required this.onTap});
 
   final IconData icon;
-  final VoidCallback onTap;
+  final Future<void> Function() onTap;
 
   @override
   State<_RoundControl> createState() => _RoundControlState();
@@ -843,9 +847,9 @@ class _RoundControl extends StatefulWidget {
 
 class _RoundControlState extends State<_RoundControl> {
   Timer? _holdTimer;
-  Timer? _repeatTimer;
   bool _pressed = false;
   bool _repeated = false;
+  int _pressGeneration = 0;
 
   @override
   void dispose() {
@@ -859,14 +863,24 @@ class _RoundControlState extends State<_RoundControl> {
       _pressed = true;
       _repeated = false;
     });
+    final generation = _pressGeneration;
     _holdTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted || !_pressed || generation != _pressGeneration) {
+        return;
+      }
       _repeated = true;
-      _fire();
-      _repeatTimer = Timer.periodic(
-        const Duration(milliseconds: 120),
-        (_) => widget.onTap(),
-      );
+      unawaited(_repeat(generation));
     });
+  }
+
+  Future<void> _repeat(int generation) async {
+    while (mounted && _pressed && generation == _pressGeneration) {
+      await _fire();
+      if (!mounted || !_pressed || generation != _pressGeneration) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
   }
 
   void _up(PointerEvent _) {
@@ -876,13 +890,13 @@ class _RoundControlState extends State<_RoundControl> {
       setState(() => _pressed = false);
     }
     if (!repeated) {
-      _fire();
+      unawaited(_fire());
     }
   }
 
-  void _fire() {
+  Future<void> _fire() async {
     unawaited(HapticFeedback.selectionClick());
-    widget.onTap();
+    await widget.onTap();
   }
 
   void _cancel(PointerEvent _) {
@@ -894,9 +908,8 @@ class _RoundControlState extends State<_RoundControl> {
 
   void _cancelTimers() {
     _holdTimer?.cancel();
-    _repeatTimer?.cancel();
     _holdTimer = null;
-    _repeatTimer = null;
+    _pressGeneration += 1;
   }
 
   @override
@@ -990,40 +1003,47 @@ class _AppsPage extends StatelessWidget {
               available: true,
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                    content: Text(
-                  Localizations.localeOf(context).languageCode == 'zh'
-                      ? '演示模式已启动 ${app.$1}'
-                      : '${app.$1} launched in Demo',
-                )),
+                  content: Text(
+                    Localizations.localeOf(context).languageCode == 'zh'
+                        ? '演示模式已启动 ${app.$1}'
+                        : '${app.$1} launched in Demo',
+                  ),
+                ),
               ),
             ),
         ],
       );
     }
     final current = controller;
-    final apps = current?.apps ?? const [];
     if (current == null || !current.connected) {
       return Center(
-          child: Text(context.tr('Connect to a PC to load approved apps.')));
+        child: Text(context.tr('Connect to a PC to load approved apps.')),
+      );
     }
-    if (apps.isEmpty) {
-      return Center(
-          child: Text(context.tr('No approved Windows apps are configured.')));
-    }
-    return GridView.count(
-      padding: const EdgeInsets.all(24),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      children: <Widget>[
-        for (final app in apps)
-          _AppCard(
-            name: app.name,
-            iconBytes: app.iconBytes,
-            available: app.available,
-            onTap: () => _launch(context, current, app.id, app.name),
-          ),
-      ],
+    return ValueListenableBuilder<List<ConfiguredApp>>(
+      valueListenable: current.appsListenable,
+      builder: (context, apps, _) {
+        if (apps.isEmpty) {
+          return Center(
+            child: Text(context.tr('No approved Windows apps are configured.')),
+          );
+        }
+        return GridView.count(
+          padding: const EdgeInsets.all(24),
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          children: <Widget>[
+            for (final app in apps)
+              _AppCard(
+                name: app.name,
+                iconBytes: app.iconBytes,
+                available: app.available,
+                onTap: () => _launch(context, current, app.id, app.name),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -1038,18 +1058,18 @@ class _AppsPage extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-            Localizations.localeOf(context).languageCode == 'zh'
-                ? '$name 已启动'
-                : '$name launched',
-          )),
+            content: Text(
+              Localizations.localeOf(context).languageCode == 'zh'
+                  ? '$name 已启动'
+                  : '$name launched',
+            ),
+          ),
         );
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     }
   }
@@ -1085,19 +1105,21 @@ class _AppCard extends StatelessWidget {
                 key: ValueKey<String>('app-icon-$name'),
                 width: 52,
                 height: 52,
+                cacheWidth: 104,
+                cacheHeight: 104,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Icon(
-                  Icons.desktop_windows_rounded,
-                  size: 48,
-                ),
+                errorBuilder: (_, _, _) =>
+                    const Icon(Icons.desktop_windows_rounded, size: 48),
               )
             else
               Icon(icon ?? Icons.desktop_windows_rounded, size: 48),
             const SizedBox(height: 12),
             Text(name),
             if (!available)
-              Text(context.tr('Unavailable'),
-                  style: const TextStyle(color: Colors.grey)),
+              Text(
+                context.tr('Unavailable'),
+                style: const TextStyle(color: Colors.grey),
+              ),
           ],
         ),
       ),
@@ -1159,9 +1181,8 @@ class _DevicesPage extends StatelessWidget {
             if (currentController != null) {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => FindComputersScreen(
-                    controller: currentController,
-                  ),
+                  builder: (_) =>
+                      FindComputersScreen(controller: currentController),
                 ),
               );
             }
@@ -1226,7 +1247,8 @@ class _SettingsPage extends StatelessWidget {
           title: Text(context.tr('Local and private')),
           subtitle: Text(
             context.tr(
-                'No cloud account, analytics, ads, or keyboard content collection.'),
+              'No cloud account, analytics, ads, or keyboard content collection.',
+            ),
           ),
         ),
         const Divider(),
@@ -1313,9 +1335,13 @@ class _SettingsPage extends StatelessWidget {
             child: SegmentedButton<String>(
               segments: <ButtonSegment<String>>[
                 ButtonSegment<String>(
-                    value: 'zh', label: Text(context.tr('Chinese'))),
+                  value: 'zh',
+                  label: Text(context.tr('Chinese')),
+                ),
                 ButtonSegment<String>(
-                    value: 'en', label: Text(context.tr('English'))),
+                  value: 'en',
+                  label: Text(context.tr('English')),
+                ),
               ],
               selected: <String>{Localizations.localeOf(context).languageCode},
               onSelectionChanged: (selection) =>
@@ -1350,9 +1376,8 @@ class _SettingsPage extends StatelessWidget {
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     }
   }
@@ -1370,8 +1395,9 @@ class _SettingsPage extends StatelessWidget {
               ? '确认$label这台电脑？'
               : '$label this PC?',
         ),
-        content:
-            Text(context.tr('Unsaved work on the Windows PC may be lost.')),
+        content: Text(
+          context.tr('Unsaved work on the Windows PC may be lost.'),
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -1389,19 +1415,16 @@ class _SettingsPage extends StatelessWidget {
     }
   }
 
-  Future<void> _power(
-    BuildContext context,
-    String action,
-    String label,
-  ) async {
+  Future<void> _power(BuildContext context, String action, String label) async {
     if (demo) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-          Localizations.localeOf(context).languageCode == 'zh'
-              ? '演示模式已模拟$label'
-              : '$label simulated in Demo',
-        )),
+          content: Text(
+            Localizations.localeOf(context).languageCode == 'zh'
+                ? '演示模式已模拟$label'
+                : '$label simulated in Demo',
+          ),
+        ),
       );
       return;
     }
@@ -1410,18 +1433,18 @@ class _SettingsPage extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-            Localizations.localeOf(context).languageCode == 'zh'
-                ? '$label命令已发送'
-                : '$label command sent',
-          )),
+            content: Text(
+              Localizations.localeOf(context).languageCode == 'zh'
+                  ? '$label命令已发送'
+                  : '$label command sent',
+            ),
+          ),
         );
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$error')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
       }
     }
   }

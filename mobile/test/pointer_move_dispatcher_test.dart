@@ -67,4 +67,22 @@ void main() {
     }
     dispatcher.dispose();
   });
+
+  test('splits large accumulated movement without losing distance', () async {
+    final calls = <(double, double)>[];
+    final dispatcher = PointerMoveDispatcher(
+      interval: const Duration(milliseconds: 1),
+      maxAbsoluteDelta: 120,
+      send: (dx, dy) async => calls.add((dx, dy)),
+    );
+
+    dispatcher.add(500, -260);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(calls.every((call) => call.$1.abs() <= 120), isTrue);
+    expect(calls.every((call) => call.$2.abs() <= 120), isTrue);
+    expect(calls.fold<double>(0, (sum, call) => sum + call.$1), 500);
+    expect(calls.fold<double>(0, (sum, call) => sum + call.$2), -260);
+    dispatcher.dispose();
+  });
 }

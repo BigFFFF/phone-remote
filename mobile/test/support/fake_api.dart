@@ -90,7 +90,10 @@ class FakeApiClient implements PhoneRemoteApiClient {
       );
 
   @override
-  Future<List<ConfiguredApp>> getApps() async => factory.apps;
+  Future<List<ConfiguredApp>> getApps({AppsUpdateHandler? onUpdate}) async {
+    onUpdate?.call(factory.apps);
+    return factory.apps;
+  }
 
   @override
   Future<void> launchApp(String appId) async =>
