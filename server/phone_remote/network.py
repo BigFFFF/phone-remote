@@ -140,7 +140,7 @@ class NetworkProfile:
 class NetworkDiagnostics:
     def __init__(self) -> None:
         self._wake_targets_cache: list[dict[str, str]] = []
-        self._wake_targets_cached_at = 0.0
+        self._wake_targets_cached_at: float | None = None
         self._wake_targets_cache_lock = threading.Lock()
 
     def addresses(self) -> list[str]:
@@ -229,7 +229,10 @@ class NetworkDiagnostics:
             return []
         with self._wake_targets_cache_lock:
             now = time.monotonic()
-            if now - self._wake_targets_cached_at < WAKE_TARGET_CACHE_SECONDS:
+            if (
+                self._wake_targets_cached_at is not None
+                and now - self._wake_targets_cached_at < WAKE_TARGET_CACHE_SECONDS
+            ):
                 return list(self._wake_targets_cache)
             script = (
                 "$items=Get-NetIPConfiguration -ErrorAction SilentlyContinue | "

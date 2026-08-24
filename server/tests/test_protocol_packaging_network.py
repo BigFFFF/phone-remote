@@ -160,11 +160,12 @@ def test_startup_registration_preserves_executable_and_arguments(monkeypatch) ->
     assert recorded["value"] == '"C:\\Program Files\\Python 3.12\\python.exe" -m phone_remote'
 
 
-def test_wake_targets_normalize_mac_and_compute_directed_broadcast(monkeypatch) -> None:
+def test_wake_targets_query_on_first_call_with_short_uptime_and_cache_result(monkeypatch) -> None:
     import phone_remote.network as network
 
     calls = []
     monkeypatch.setattr(network.sys, "platform", "win32")
+    monkeypatch.setattr(network.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(
         network.subprocess,
         "run",
