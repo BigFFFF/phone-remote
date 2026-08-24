@@ -102,6 +102,7 @@ class ServerRuntime:
             startup_command=self.startup_command,
             ui_language=self.ui_language,
         )
+        self.context.start_network_monitor()
         self.http = PhoneRemoteServer((args.host, args.port), self.context)
         self.web_http: PhoneRemoteServer | None = None
         if not args.insecure_http:
@@ -177,6 +178,7 @@ class ServerRuntime:
         self.http.server_close()
         if self.web_http is not None:
             self.web_http.server_close()
+        self.context.stop_network_monitor()
         self.logger.info("server stopped")
 
     def _start_background_server(self, server: PhoneRemoteServer | None, name: str) -> None:

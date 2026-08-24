@@ -185,8 +185,12 @@ def test_windows_mouse_move_preserves_fractional_deltas() -> None:
     events = []
 
     class User32:
-        def mouse_event(self, *args):
-            events.append(args)
+        def SendInput(self, count, inputs, _size):
+            events.extend(
+                (inputs[index].mi.dwFlags, inputs[index].mi.dx, inputs[index].mi.dy)
+                for index in range(count)
+            )
+            return count
 
     backend = WindowsBackend.__new__(WindowsBackend)
     backend.user32 = User32()
@@ -198,7 +202,7 @@ def test_windows_mouse_move_preserves_fractional_deltas() -> None:
     assert events == []
 
     backend.mouse_move(0.4, -0.4)
-    assert events == [(WindowsBackend.MOUSEEVENTF_MOVE, 1, -1, 0, 0)]
+    assert events == [(WindowsBackend.MOUSEEVENTF_MOVE, 1, -1)]
     assert backend._mouse_remainder_x == pytest.approx(0.2)
     assert backend._mouse_remainder_y == pytest.approx(-0.2)
 

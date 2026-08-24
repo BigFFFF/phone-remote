@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import json
 import logging
 import mimetypes
 import secrets
 import threading
-import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +33,9 @@ from .security import ServerIdentity
 from .windows_control import ControlService
 
 MAX_REQUEST_BYTES = 16 * 1024
+MAX_WEBSOCKET_FRAME_BYTES = 4 * 1024
+NETWORK_PROFILE_REFRESH_SECONDS = 15
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -50,6 +55,10 @@ class ApiError(Exception):
         self.message = message
 
 
+class WebSocketProtocolError(Exception):
+    pass
+
+
 @dataclass
 class ApiContext:
     identity: ServerIdentity
@@ -67,17 +76,52 @@ class ApiContext:
     ui_language: UiLanguageStore | None = None
     admin_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     _profile_lock: threading.Lock = field(default_factory=threading.Lock)
-    _profile_checked_at: float = 0.0
-    _public_only: bool = False
+    _profile_stop: threading.Event = field(default_factory=threading.Event)
+    _profile_thread: threading.Thread | None = None
+    _public_only: bool = True
+
+    def start_network_monitor(self) -> None:
+        with self._profile_lock:
+            if self._profile_thread is not None:
+                return
+        self._refresh_network_profile()
+        thread = threading.Thread(
+            target=self._monitor_network_profile,
+            name="phone-remote-network-profile",
+            daemon=True,
+        )
+        with self._profile_lock:
+            if self._profile_thread is not None:
+                return
+            self._profile_stop.clear()
+            self._profile_thread = thread
+        thread.start()
+
+    def stop_network_monitor(self) -> None:
+        with self._profile_lock:
+            thread = self._profile_thread
+            self._profile_thread = None
+            self._profile_stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2)
+
+    def _monitor_network_profile(self) -> None:
+        while not self._profile_stop.wait(NETWORK_PROFILE_REFRESH_SECONDS):
+            self._refresh_network_profile()
+
+    def _refresh_network_profile(self) -> None:
+        try:
+            public_only = self.network.public_only()
+        except Exception:
+            self.logger.exception("network profile refresh failed")
+            return
+        with self._profile_lock:
+            self._public_only = public_only
 
     def remote_allowed(self, address: str) -> bool:
         if is_loopback(address):
             return True
-        now = time.monotonic()
         with self._profile_lock:
-            if now - self._profile_checked_at > 15:
-                self._public_only = self.network.public_only()
-                self._profile_checked_at = now
             return not self._public_only
 
 
@@ -134,6 +178,9 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
             if not context.remote_allowed(self.client_address[0]):
                 raise ApiError(HTTPStatus.FORBIDDEN, "connections are blocked on Public networks")
             path = urlparse(self.path).path
+            if method == "GET" and path == "/api/v1/pointer":
+                self._handle_pointer_websocket()
+                return
             if method in {"GET", "HEAD"} and self._serve_static(path, head=method == "HEAD"):
                 return
             if path.startswith("/api/v1/admin/"):
@@ -379,12 +426,137 @@ class PhoneRemoteHandler(BaseHTTPRequestHandler):
     def _require_client(self) -> dict[str, Any]:
         value = self.headers.get("Authorization", "")
         prefix = "Bearer "
-        if not value.startswith(prefix):
+        credential = value[len(prefix) :] if value.startswith(prefix) else ""
+        if not credential:
+            protocols = {
+                item.strip() for item in self.headers.get("Sec-WebSocket-Protocol", "").split(",")
+            }
+            credential = next(
+                (item[len("auth.") :] for item in protocols if item.startswith("auth.")),
+                "",
+            )
+        if not credential:
             raise ApiError(HTTPStatus.UNAUTHORIZED, "authentication required")
-        client = self.server.context.credentials.authenticate(value[len(prefix) :])
+        client = self.server.context.credentials.authenticate(credential)
         if client is None:
             raise ApiError(HTTPStatus.UNAUTHORIZED, "invalid or revoked credential")
         return client
+
+    def _handle_pointer_websocket(self) -> None:
+        if self.headers.get("Upgrade", "").lower() != "websocket":
+            raise ApiError(HTTPStatus.UPGRADE_REQUIRED, "websocket upgrade required")
+        connection_tokens = {
+            item.strip().lower() for item in self.headers.get("Connection", "").split(",")
+        }
+        if "upgrade" not in connection_tokens:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid websocket connection header")
+        if self.headers.get("Sec-WebSocket-Version") != "13":
+            raise ApiError(HTTPStatus.BAD_REQUEST, "unsupported websocket version")
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        try:
+            decoded_key = base64.b64decode(key, validate=True)
+        except ValueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid websocket key") from exc
+        if len(decoded_key) != 16:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid websocket key")
+
+        client = self._require_client()
+        accept = base64.b64encode(hashlib.sha1(f"{key}{WEBSOCKET_GUID}".encode()).digest()).decode()
+        self.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        protocols = {
+            item.strip() for item in self.headers.get("Sec-WebSocket-Protocol", "").split(",")
+        }
+        if "phone-remote.v1" in protocols:
+            self.send_header("Sec-WebSocket-Protocol", "phone-remote.v1")
+        self.end_headers()
+        self.close_connection = True
+        self.server.context.logger.debug(
+            "pointer websocket connected client=%s", client["client_id"]
+        )
+
+        try:
+            self._pointer_websocket_loop()
+        except (ConnectionError, EOFError, OSError):
+            pass
+        except WebSocketProtocolError:
+            self._send_websocket_close(1002)
+        finally:
+            self.server.context.logger.debug(
+                "pointer websocket disconnected client=%s", client["client_id"]
+            )
+
+    def _pointer_websocket_loop(self) -> None:
+        while True:
+            opcode, payload = self._read_websocket_frame()
+            if opcode == 0x8:
+                self._send_websocket_frame(0x8, payload[:125])
+                return
+            if opcode == 0x9:
+                self._send_websocket_frame(0xA, payload)
+                continue
+            if opcode == 0xA:
+                continue
+            if opcode != 0x1:
+                raise WebSocketProtocolError("only text frames are supported")
+            try:
+                data = json.loads(payload.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise WebSocketProtocolError("invalid pointer frame") from exc
+            if not isinstance(data, dict) or data.get("type") not in {"move", "wheel"}:
+                raise WebSocketProtocolError("invalid pointer event")
+            try:
+                self.server.context.control.mouse(data)
+            except ValueError as exc:
+                raise WebSocketProtocolError("invalid pointer event") from exc
+
+    def _read_websocket_frame(self) -> tuple[int, bytes]:
+        header = self._read_exact(2)
+        first, second = header
+        if first & 0x70 or not first & 0x80:
+            raise WebSocketProtocolError("fragmented websocket frames are unsupported")
+        opcode = first & 0x0F
+        if not second & 0x80:
+            raise WebSocketProtocolError("client websocket frames must be masked")
+        length = second & 0x7F
+        if length == 126:
+            length = int.from_bytes(self._read_exact(2), "big")
+        elif length == 127:
+            length = int.from_bytes(self._read_exact(8), "big")
+        if opcode & 0x08 and length > 125:
+            raise WebSocketProtocolError("invalid websocket control frame")
+        if length > MAX_WEBSOCKET_FRAME_BYTES:
+            raise WebSocketProtocolError("websocket frame is too large")
+        mask = self._read_exact(4)
+        payload = self._read_exact(length)
+        return opcode, bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+
+    def _read_exact(self, length: int) -> bytes:
+        chunks = bytearray()
+        while len(chunks) < length:
+            chunk = self.rfile.read(length - len(chunks))
+            if not chunk:
+                raise EOFError
+            chunks.extend(chunk)
+        return bytes(chunks)
+
+    def _send_websocket_frame(self, opcode: int, payload: bytes = b"") -> None:
+        first = bytes((0x80 | opcode,))
+        length = len(payload)
+        if length < 126:
+            header = first + bytes((length,))
+        elif length <= 0xFFFF:
+            header = first + bytes((126,)) + length.to_bytes(2, "big")
+        else:
+            header = first + bytes((127,)) + length.to_bytes(8, "big")
+        self.wfile.write(header + payload)
+        self.wfile.flush()
+
+    def _send_websocket_close(self, code: int) -> None:
+        with suppress(OSError):
+            self._send_websocket_frame(0x8, code.to_bytes(2, "big"))
 
     def _require_admin(self) -> None:
         if not is_loopback(self.client_address[0]):

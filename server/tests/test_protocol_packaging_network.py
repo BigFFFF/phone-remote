@@ -43,19 +43,25 @@ def test_firewall_commands_are_private_program_specific_and_local_subnet(tmp_pat
     assert "localport=5353" in " ".join(discovery).lower()
 
 
-def test_public_network_policy_blocks_non_loopback_only(monkeypatch) -> None:
+def test_public_network_policy_blocks_non_loopback_only() -> None:
     context = object.__new__(ApiContext)
     context._profile_lock = __import__("threading").Lock()
-    context._profile_checked_at = 0.0
-    context._public_only = False
+    context._profile_stop = __import__("threading").Event()
+    context._profile_thread = None
+    context._public_only = True
+    context.logger = logging.getLogger("phone_remote.test.network-policy")
 
     class Network:
         def public_only(self):
             return True
 
     context.network = Network()
-    assert context.remote_allowed("127.0.0.1") is True
-    assert context.remote_allowed("192.168.1.20") is False
+    context.start_network_monitor()
+    try:
+        assert context.remote_allowed("127.0.0.1") is True
+        assert context.remote_allowed("192.168.1.20") is False
+    finally:
+        context.stop_network_monitor()
 
 
 def test_private_lan_classification_rejects_public_addresses() -> None:
@@ -118,6 +124,7 @@ def test_runtime_stops_background_listeners_before_closing_sockets() -> None:
     runtime.http = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
     runtime.web_http = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
     runtime.publisher = SimpleNamespace(close=lambda: None)
+    runtime.context = SimpleNamespace(stop_network_monitor=lambda: None)
     runtime.logger = logging.getLogger("phone_remote.test.lifecycle")
     runtime._server_threads = []
     runtime._start_background_server(runtime.http, "test-api")
@@ -238,6 +245,7 @@ def test_openapi_contract_has_security_and_all_control_routes() -> None:
         "/apps/{appId}/launch",
         "/action",
         "/mouse",
+        "/pointer",
         "/text",
         "/power",
     }

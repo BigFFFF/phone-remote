@@ -24,18 +24,13 @@ enum RemoteConnectionPhase {
 
 class PhoneRemoteController extends ChangeNotifier {
   PhoneRemoteController({
-    required DeviceRepository deviceRepository,
-    required DiscoveryService discoveryService,
-    required PairingService pairingService,
-    required RemoteSessionFactory remoteSessionFactory,
-    required WakeService wakeService,
+    required this._deviceRepository,
+    required this._discoveryService,
+    required this._pairingService,
+    required this._remoteSessionFactory,
+    required this._wakeService,
     Future<void> Function(Duration duration)? delay,
-  })  : _deviceRepository = deviceRepository,
-        _discoveryService = discoveryService,
-        _pairingService = pairingService,
-        _remoteSessionFactory = remoteSessionFactory,
-        _wakeService = wakeService,
-        _delay = delay ?? _defaultDelay;
+  })  : _delay = delay ?? _defaultDelay;
 
   final DeviceRepository _deviceRepository;
   final DiscoveryService _discoveryService;

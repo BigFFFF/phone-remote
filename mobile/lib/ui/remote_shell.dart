@@ -1086,7 +1086,7 @@ class _AppCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(
+                errorBuilder: (_, _, _) => const Icon(
                   Icons.desktop_windows_rounded,
                   size: 48,
                 ),

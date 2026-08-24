@@ -1,6 +1,9 @@
+import base64
 import http.client
 import json
 import logging
+import os
+import socket
 import threading
 from pathlib import Path
 
@@ -49,6 +52,7 @@ class FakeBackend:
 class FakeNetwork:
     def __init__(self, public_only=False):
         self.is_public_only = public_only
+        self.public_only_calls = 0
 
     def addresses(self):
         return ["192.168.1.10"]
@@ -57,6 +61,7 @@ class FakeNetwork:
         return []
 
     def public_only(self):
+        self.public_only_calls += 1
         return self.is_public_only
 
     def firewall_status(self):
@@ -121,6 +126,46 @@ class RunningApi:
         )
         assert status == 201
         return completed
+
+
+def _masked_websocket_frame(opcode: int, payload: bytes) -> bytes:
+    mask = os.urandom(4)
+    length = len(payload)
+    assert length < 126
+    masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+    return bytes((0x80 | opcode, 0x80 | length)) + mask + masked
+
+
+def _read_websocket_frame(connection: socket.socket) -> tuple[int, bytes]:
+    header = connection.recv(2)
+    assert len(header) == 2
+    length = header[1] & 0x7F
+    assert length < 126
+    payload = b""
+    while len(payload) < length:
+        payload += connection.recv(length - len(payload))
+    return header[0] & 0x0F, payload
+
+
+def _open_pointer_websocket(api: RunningApi, credential: str) -> socket.socket:
+    connection = socket.create_connection(("127.0.0.1", api.port), timeout=5)
+    key = base64.b64encode(os.urandom(16)).decode()
+    request = (
+        "GET /api/v1/pointer HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{api.port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        f"Authorization: Bearer {credential}\r\n"
+        "\r\n"
+    )
+    connection.sendall(request.encode("ascii"))
+    response = b""
+    while b"\r\n\r\n" not in response:
+        response += connection.recv(4096)
+    assert response.startswith(b"HTTP/1.1 101 Switching Protocols\r\n")
+    return connection
 
 
 @pytest.fixture()
@@ -231,6 +276,17 @@ def test_api_supports_http11_keep_alive(api: RunningApi) -> None:
     assert PhoneRemoteHandler.disable_nagle_algorithm is True
 
 
+def test_network_profile_is_cached_outside_request_path(api: RunningApi) -> None:
+    api.context.start_network_monitor()
+    try:
+        assert api.context.network.public_only_calls == 1
+        assert api.context.remote_allowed("192.168.1.20") is True
+        assert api.context.remote_allowed("192.168.1.21") is True
+        assert api.context.network.public_only_calls == 1
+    finally:
+        api.context.stop_network_monitor()
+
+
 def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) -> None:
     assert api.request("GET", "/api/v1/status")[0] == 401
     paired = api.pair()
@@ -242,6 +298,20 @@ def test_control_requires_pairing_and_accepts_valid_credential(api: RunningApi) 
     status, _, _ = api.request("POST", "/api/v1/action", {"action": "up"}, credential=credential)
     assert status == 200
     assert api.backend.events[-1][0] == "key"
+
+
+def test_pointer_websocket_authenticates_once_and_streams_movement(api: RunningApi) -> None:
+    credential = api.pair()["credential"]
+    connection = _open_pointer_websocket(api, credential)
+    try:
+        movement = json.dumps({"type": "move", "dx": 2.5, "dy": -3.5}).encode()
+        connection.sendall(_masked_websocket_frame(0x1, movement))
+        connection.sendall(_masked_websocket_frame(0x9, b"barrier"))
+        assert _read_websocket_frame(connection) == (0xA, b"barrier")
+        assert api.backend.events[-1] == ("move", 2.5, -3.5)
+    finally:
+        connection.sendall(_masked_websocket_frame(0x8, b""))
+        connection.close()
 
 
 def test_revoked_credential_is_rejected_without_affecting_other_client(api: RunningApi) -> None:

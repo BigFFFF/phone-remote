@@ -24,11 +24,10 @@ class UnauthorizedException extends ApiException {
 }
 
 class IdentityMismatchException extends ApiException {
-  const IdentityMismatchException({
-    required this.expected,
-    this.actual,
-  }) : super(
-            'The Windows PC identity changed. Pair again only if this was intentional.');
+  const IdentityMismatchException({required this.expected, this.actual})
+    : super(
+        'The Windows PC identity changed. Pair again only if this was intentional.',
+      );
 
   final String expected;
   final String? actual;
@@ -107,8 +106,8 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
     this.expectedServerId,
     this.credential,
     this.timeout = const Duration(seconds: 8),
-    TlsIdentityVerifier verifier = const TlsIdentityVerifier(),
-  }) : _verifier = verifier {
+    this._verifier = const TlsIdentityVerifier(),
+  }) {
     _httpClient = HttpClient();
     _httpClient.badCertificateCallback = (certificate, host, port) {
       if (host != endpoint.host || port != endpoint.port) {
@@ -132,6 +131,10 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   final Duration timeout;
   final TlsIdentityVerifier _verifier;
   late final HttpClient _httpClient;
+  WebSocket? _pointerSocket;
+  Future<WebSocket>? _pointerConnecting;
+  DateTime? _pointerRetryAfter;
+  bool _closed = false;
   String? _cachedCertificatePem;
   CertificateFingerprints? _cachedFingerprints;
   static const int _maximumIconBytes = 2 * 1024 * 1024;
@@ -178,8 +181,11 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
 
   @override
   Future<PairingSession> requestPairing() async {
-    final response =
-        await _send('POST', '/pair/request', body: const <String, Object?>{});
+    final response = await _send(
+      'POST',
+      '/pair/request',
+      body: const <String, Object?>{},
+    );
     return PairingSession.fromJson(response.body);
   }
 
@@ -241,9 +247,11 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
     }
 
     await Future.wait(<Future<void>>[
-      for (var worker = 0;
-          worker < _iconDownloadWorkers && worker < apps.length;
-          worker += 1)
+      for (
+        var worker = 0;
+        worker < _iconDownloadWorkers && worker < apps.length;
+        worker += 1
+      )
         downloadNext(),
     ]);
     return List<ConfiguredApp>.unmodifiable(apps);
@@ -255,8 +263,9 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       throw const FormatException('App icon path is invalid.');
     }
     try {
-      final request =
-          await _httpClient.getUrl(endpoint.resourceUri(path)).timeout(timeout);
+      final request = await _httpClient
+          .getUrl(endpoint.resourceUri(path))
+          .timeout(timeout);
       final token = credential;
       if (token != null && token.isNotEmpty) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
@@ -271,7 +280,8 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       final certificate = response.certificate;
       if (certificate == null) {
         throw const ApiException(
-            'The Windows PC did not provide a TLS certificate.');
+          'The Windows PC did not provide a TLS certificate.',
+        );
       }
       final fingerprints = _fingerprintsFor(certificate);
       final expected = trustedIdentity;
@@ -306,7 +316,8 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         throw IdentityMismatchException(expected: expected);
       }
       throw const ApiException(
-          'Unable to establish a secure connection to the Windows PC.');
+        'Unable to establish a secure connection to the Windows PC.',
+      );
     } on TimeoutException catch (_) {
       throw const ApiException('The app icon request timed out.');
     } on SocketException catch (_) {
@@ -328,34 +339,27 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   }
 
   @override
-  Future<void> sendAction(String action) => _sendCommand(
-        '/action',
-        <String, Object?>{'action': action},
-      );
+  Future<void> sendAction(String action) =>
+      _sendCommand('/action', <String, Object?>{'action': action});
 
   @override
-  Future<void> sendMouseMove(double dx, double dy) => _sendCommand(
-        '/mouse',
-        <String, Object?>{'type': 'move', 'dx': dx, 'dy': dy},
-      );
+  Future<void> sendMouseMove(double dx, double dy) => _sendPointerCommand(
+    <String, Object?>{'type': 'move', 'dx': dx, 'dy': dy},
+  );
 
   @override
   Future<void> sendMouseClick({String button = 'left'}) => _sendCommand(
-        '/mouse',
-        <String, Object?>{'type': 'click', 'button': button},
-      );
+    '/mouse',
+    <String, Object?>{'type': 'click', 'button': button},
+  );
 
   @override
-  Future<void> sendMouseDoubleClick() => _sendCommand(
-        '/mouse',
-        const <String, Object?>{'type': 'double'},
-      );
+  Future<void> sendMouseDoubleClick() =>
+      _sendCommand('/mouse', const <String, Object?>{'type': 'double'});
 
   @override
-  Future<void> sendMouseWheel(double delta) => _sendCommand(
-        '/mouse',
-        <String, Object?>{'type': 'wheel', 'delta': delta},
-      );
+  Future<void> sendMouseWheel(double delta) =>
+      _sendPointerCommand(<String, Object?>{'type': 'wheel', 'delta': delta});
 
   @override
   Future<void> sendText(String text) {
@@ -366,13 +370,96 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
   }
 
   @override
-  Future<void> sendPowerAction(String action) => _sendCommand(
-        '/power',
-        <String, Object?>{'action': action},
-      );
+  Future<void> sendPowerAction(String action) =>
+      _sendCommand('/power', <String, Object?>{'action': action});
 
   Future<void> _sendCommand(String path, Map<String, Object?> body) async {
     await _send('POST', path, body: body, authenticated: true);
+  }
+
+  Future<void> _sendPointerCommand(Map<String, Object?> body) async {
+    if (_closed) {
+      throw const ApiException('The connection to the Windows PC is closed.');
+    }
+    final retryAfter = _pointerRetryAfter;
+    if (retryAfter != null && DateTime.now().isBefore(retryAfter)) {
+      await _sendCommand('/mouse', body);
+      return;
+    }
+    try {
+      final socket = await _pointerWebSocket();
+      socket.add(jsonEncode(body));
+    } on Object {
+      _pointerRetryAfter = DateTime.now().add(const Duration(seconds: 5));
+      _discardPointerSocket();
+      await _sendCommand('/mouse', body);
+    }
+  }
+
+  Future<WebSocket> _pointerWebSocket() async {
+    final current = _pointerSocket;
+    if (current != null && current.readyState == WebSocket.open) {
+      return current;
+    }
+    final connecting = _pointerConnecting;
+    if (connecting != null) {
+      return connecting;
+    }
+    final future = _connectPointerWebSocket();
+    _pointerConnecting = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_pointerConnecting, future)) {
+        _pointerConnecting = null;
+      }
+    }
+  }
+
+  Future<WebSocket> _connectPointerWebSocket() async {
+    final token = credential;
+    if (token == null || token.isEmpty) {
+      throw const UnauthorizedException('No saved credential is available.');
+    }
+    final uri = endpoint.apiUri('/pointer').replace(scheme: 'wss');
+    final connectTimeout = timeout < const Duration(seconds: 2)
+        ? timeout
+        : const Duration(seconds: 2);
+    final socket = await WebSocket.connect(
+      uri.toString(),
+      headers: <String, String>{
+        HttpHeaders.authorizationHeader: 'Bearer $token',
+      },
+      customClient: _httpClient,
+    ).timeout(connectTimeout);
+    if (_closed) {
+      await socket.close();
+      throw const ApiException('The connection to the Windows PC is closed.');
+    }
+    socket.pingInterval = const Duration(seconds: 20);
+    _pointerRetryAfter = null;
+    _pointerSocket = socket;
+    socket.listen(
+      (_) {},
+      onError: (_) => _forgetPointerSocket(socket),
+      onDone: () => _forgetPointerSocket(socket),
+      cancelOnError: true,
+    );
+    return socket;
+  }
+
+  void _forgetPointerSocket(WebSocket socket) {
+    if (identical(_pointerSocket, socket)) {
+      _pointerSocket = null;
+    }
+  }
+
+  void _discardPointerSocket() {
+    final socket = _pointerSocket;
+    _pointerSocket = null;
+    if (socket != null) {
+      unawaited(socket.close());
+    }
   }
 
   Future<_VerifiedResponse> _send(
@@ -390,7 +477,8 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         final token = credential;
         if (token == null || token.isEmpty) {
           throw const UnauthorizedException(
-              'No saved credential is available.');
+            'No saved credential is available.',
+          );
         }
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       }
@@ -404,16 +492,19 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
       final certificate = response.certificate;
       if (certificate == null) {
         throw const ApiException(
-            'The Windows PC did not provide a TLS certificate.');
+          'The Windows PC did not provide a TLS certificate.',
+        );
       }
       final fingerprints = _fingerprintsFor(certificate);
       final text = await utf8.decoder.bind(response).join().timeout(timeout);
-      final decoded =
-          text.isEmpty ? const <String, Object?>{} : jsonDecode(text);
+      final decoded = text.isEmpty
+          ? const <String, Object?>{}
+          : jsonDecode(text);
       final responseBody = decoded is Map<String, Object?>
           ? decoded
           : throw const ApiException(
-              'The Windows PC returned an invalid response.');
+              'The Windows PC returned an invalid response.',
+            );
       if (response.statusCode == HttpStatus.unauthorized) {
         throw UnauthorizedException(_errorMessage(responseBody));
       }
@@ -434,19 +525,25 @@ class HttpPhoneRemoteApiClient implements PhoneRemoteApiClient {
         throw IdentityMismatchException(expected: expected);
       }
       throw const ApiException(
-          'Unable to establish a secure connection to the Windows PC.');
+        'Unable to establish a secure connection to the Windows PC.',
+      );
     } on TimeoutException catch (_) {
       throw const ApiException('The Windows PC did not respond in time.');
     } on SocketException catch (_) {
       throw const ApiException(
-          'Unable to reach the Windows PC on the local network.');
+        'Unable to reach the Windows PC on the local network.',
+      );
     } on FormatException catch (_) {
       throw const ApiException('The Windows PC returned an invalid response.');
     }
   }
 
   @override
-  void close() => _httpClient.close(force: true);
+  void close() {
+    _closed = true;
+    _discardPointerSocket();
+    _httpClient.close(force: true);
+  }
 
   CertificateFingerprints _fingerprintsFor(X509Certificate certificate) {
     final pem = certificate.pem;

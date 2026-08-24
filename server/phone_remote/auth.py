@@ -4,6 +4,8 @@ import base64
 import hashlib
 import hmac
 import secrets
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,6 +19,7 @@ SCRYPT_R = 8
 SCRYPT_P = 1
 SALT_BYTES = 16
 SECRET_BYTES = 32
+CREDENTIAL_CACHE_SECONDS = 5 * 60
 
 
 def utc_now() -> str:
@@ -29,6 +32,10 @@ def _encode(value: bytes) -> str:
 
 def _decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def _credential_cache_key(credential: str) -> bytes:
+    return hashlib.sha256(credential.encode("ascii")).digest()
 
 
 def _verifier(secret: str, salt: bytes) -> bytes:
@@ -45,9 +52,18 @@ class IssuedCredential:
     platform: str
 
 
+@dataclass(frozen=True)
+class _CachedCredential:
+    client_id: str
+    record: dict[str, Any]
+    expires_at: float
+
+
 class CredentialStore:
     def __init__(self, state: StateStore):
         self.state = state
+        self._cache: dict[bytes, _CachedCredential] = {}
+        self._cache_lock = threading.RLock()
 
     def issue(self, device_name: str, platform: str) -> IssuedCredential:
         device_name = _metadata_text(device_name, "device name", 120)
@@ -70,8 +86,10 @@ class CredentialStore:
         def add(state: dict[str, Any]) -> None:
             state["clients"].append(record)
 
-        self.state.update(add)
         credential = f"{TOKEN_PREFIX}.{client_id}.{secret}"
+        with self._cache_lock:
+            self.state.update(add)
+            self._cache_credential(credential, record)
         return IssuedCredential(client_id, credential, device_name, platform)
 
     def authenticate(
@@ -81,31 +99,41 @@ class CredentialStore:
         if parsed is None:
             return None
         client_id, secret = parsed
-        state = self.state.read()
-        record = next(
-            (item for item in state["clients"] if item.get("client_id") == client_id), None
-        )
-        if not isinstance(record, dict) or record.get("revoked_at"):
-            return None
-        try:
-            expected = _decode(record["credential_verifier"])
-            actual = _verifier(secret, _decode(record["credential_salt"]))
-        except (KeyError, TypeError, ValueError):
-            return None
-        if not hmac.compare_digest(actual, expected):
-            return None
-        if update_last_seen and _last_seen_is_stale(record):
-            now = utc_now()
+        cache_key = _credential_cache_key(credential)
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            now_monotonic = time.monotonic()
+            if cached is not None:
+                if cached.client_id == client_id and cached.expires_at > now_monotonic:
+                    return dict(cached.record)
+                self._cache.pop(cache_key, None)
 
-            def touch(value: dict[str, Any]) -> None:
-                for item in value["clients"]:
-                    if item.get("client_id") == client_id and not item.get("revoked_at"):
-                        item["last_seen"] = now
-                        break
+            state = self.state.read()
+            record = next(
+                (item for item in state["clients"] if item.get("client_id") == client_id), None
+            )
+            if not isinstance(record, dict) or record.get("revoked_at"):
+                return None
+            try:
+                expected = _decode(record["credential_verifier"])
+                actual = _verifier(secret, _decode(record["credential_salt"]))
+            except (KeyError, TypeError, ValueError):
+                return None
+            if not hmac.compare_digest(actual, expected):
+                return None
+            if update_last_seen and _last_seen_is_stale(record):
+                now = utc_now()
 
-            self.state.update(touch)
-            record["last_seen"] = now
-        return _public_record(record)
+                def touch(value: dict[str, Any]) -> None:
+                    for item in value["clients"]:
+                        if item.get("client_id") == client_id and not item.get("revoked_at"):
+                            item["last_seen"] = now
+                            break
+
+                self.state.update(touch)
+                record["last_seen"] = now
+            self._cache_credential(credential, record)
+            return _public_record(record)
 
     def list_clients(self, *, include_revoked: bool = False) -> list[dict[str, Any]]:
         records = self.state.read()["clients"]
@@ -126,7 +154,10 @@ class CredentialStore:
                     revoked = True
                     return
 
-        self.state.update(mutate)
+        with self._cache_lock:
+            self.state.update(mutate)
+            if revoked:
+                self._invalidate_client(client_id)
         return revoked
 
     def revoke_all(self) -> int:
@@ -140,8 +171,24 @@ class CredentialStore:
                     item["revoked_at"] = now
                     count += 1
 
-        self.state.update(mutate)
+        with self._cache_lock:
+            self.state.update(mutate)
+            if count:
+                self._cache.clear()
         return count
+
+    def _cache_credential(self, credential: str, record: dict[str, Any]) -> None:
+        public = _public_record(record)
+        self._cache[_credential_cache_key(credential)] = _CachedCredential(
+            str(public["client_id"]),
+            public,
+            time.monotonic() + CREDENTIAL_CACHE_SECONDS,
+        )
+
+    def _invalidate_client(self, client_id: str) -> None:
+        self._cache = {
+            key: value for key, value in self._cache.items() if value.client_id != client_id
+        }
 
     @staticmethod
     def _parse(credential: str) -> tuple[str, str] | None:

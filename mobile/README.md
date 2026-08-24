@@ -1,12 +1,13 @@
 # Phone Remote Mobile
 
-Flutter 3.24.5 Android/iOS client for API v1. It provides discovery, identity-pinned pairing,
+Flutter 3.47.1 Android/iOS client for API v1. It provides discovery, identity-pinned pairing,
 secure multi-PC storage, configurable Touchpad/D-pad controls, keyboard, media, approved apps,
 standby/hibernate/restart/shutdown controls, explicit Android Wake on LAN, and offline Demo mode.
 
 ## Develop
 
-Requirements: Flutter 3.24.5, JDK 17, Android API 36. iOS builds require macOS, Xcode 16+, and
+Requirements: Flutter 3.47.1, Dart 3.13.1, Eclipse Temurin JDK 21, Android API 36. The Android build uses
+AGP 9.1.0, Gradle 9.3.1, and Java/Kotlin 21 bytecode targets. iOS builds require macOS, Xcode 16+, and
 CocoaPods 1.15+.
 
 ```powershell

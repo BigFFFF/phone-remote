@@ -36,10 +36,9 @@ abstract interface class RemoteSessionFactory {
 
 class RealRemoteSessionFactory implements RemoteSessionFactory {
   const RealRemoteSessionFactory({
-    required DeviceRepository deviceRepository,
-    required ApiClientFactory apiClientFactory,
-  })  : _deviceRepository = deviceRepository,
-        _apiClientFactory = apiClientFactory;
+    required this._deviceRepository,
+    required this._apiClientFactory,
+  });
 
   final DeviceRepository _deviceRepository;
   final ApiClientFactory _apiClientFactory;
@@ -98,8 +97,8 @@ class ApiRemoteSession implements RemoteSession {
   const ApiRemoteSession({
     required this.device,
     required this.status,
-    required PhoneRemoteApiClient client,
-  }) : _client = client;
+    required this._client,
+  });
 
   @override
   final Device device;

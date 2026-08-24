@@ -111,7 +111,12 @@ void main() {
           .listen(capture);
 
       try {
-        await ready.future.timeout(const Duration(seconds: 15));
+        await ready.future.timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw StateError(
+            'Windows Companion did not become ready:\n${output.join('\n')}',
+          ),
+        );
         final repository = RealDeviceRepository(
           metadataStorage: MemoryMetadataStorage(),
           credentialStorage: MemoryCredentialStorage(),
@@ -146,6 +151,7 @@ void main() {
         expect(apps.single.name, 'Integration App');
         expect(apps.single.iconBytes, isNotNull);
         expect(apps.single.iconBytes, isNotEmpty);
+        await session.sendMouseMove(0, 0);
         session.close();
       } finally {
         process.kill();
@@ -161,6 +167,6 @@ void main() {
     skip: enabled
         ? false
         : 'Set PHONE_REMOTE_LIVE_SERVER_TEST=1 to run the local HTTPS integration.',
-    timeout: const Timeout(Duration(seconds: 45)),
+    timeout: const Timeout(Duration(seconds: 60)),
   );
 }

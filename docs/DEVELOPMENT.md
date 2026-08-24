@@ -3,7 +3,8 @@
 ## Toolchain
 
 - Windows 11, Python 3.12, Inno Setup 6
-- Flutter 3.24.5 / Dart 3.5.4, JDK 17, Android API 36
+- Flutter 3.47.1 / Dart 3.13.1, Eclipse Temurin JDK 21, Android API 36
+- Android Gradle Plugin 9.1.0 / Gradle 9.3.1, Java and Kotlin target 21
 - macOS with Xcode 16+ and CocoaPods 1.15+ for iOS builds
 
 ## Server

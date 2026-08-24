@@ -18,10 +18,9 @@ class PairingAttempt {
 
 class PairingService {
   const PairingService({
-    required ApiClientFactory apiClientFactory,
-    required DeviceRepository deviceRepository,
-  })  : _apiClientFactory = apiClientFactory,
-        _deviceRepository = deviceRepository;
+    required this._apiClientFactory,
+    required this._deviceRepository,
+  });
 
   final ApiClientFactory _apiClientFactory;
   final DeviceRepository _deviceRepository;

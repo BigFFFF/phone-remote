@@ -18,11 +18,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
+          flutter-version: "3.47.1"
           channel: stable
           cache: true
       - name: Install Android SDK baseline
@@ -30,10 +30,11 @@ jobs:
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "platform-tools" \
-            "platforms;android-34" \
+            "platforms;android-35" \
             "platforms;android-36" \
-            "build-tools;33.0.1" \
-            "build-tools;36.0.0"
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.2.13676358"
       - name: Get dependencies
         working-directory: mobile
         run: flutter pub get
@@ -62,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
+          flutter-version: "3.47.1"
           channel: stable
           cache: true
       - name: Get dependencies

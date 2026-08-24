@@ -41,6 +41,26 @@ VK_LWIN = 0x5B
 VK_D = 0x44
 
 
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("mi", _MOUSEINPUT)]
+
+
+class _INPUT(ctypes.Structure):
+    _anonymous_ = ("value",)
+    _fields_ = [("type", wintypes.DWORD), ("value", _INPUTUNION)]
+
+
 class ControlBackend(Protocol):
     def key(self, vk_code: int) -> None: ...
 
@@ -58,6 +78,7 @@ class ControlBackend(Protocol):
 
 
 class WindowsBackend:
+    INPUT_MOUSE = 0
     KEYEVENTF_KEYUP = 0x0002
     MOUSEEVENTF_MOVE = 0x0001
     MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -102,6 +123,12 @@ class WindowsBackend:
             wintypes.LPARAM,
         )
         self.user32.PostMessageW.restype = wintypes.BOOL
+        self.user32.SendInput.argtypes = (
+            wintypes.UINT,
+            ctypes.POINTER(_INPUT),
+            ctypes.c_int,
+        )
+        self.user32.SendInput.restype = wintypes.UINT
         self._mouse_remainder_x = 0.0
         self._mouse_remainder_y = 0.0
 
@@ -144,19 +171,38 @@ class WindowsBackend:
         self._mouse_remainder_x = total_x - whole_x
         self._mouse_remainder_y = total_y - whole_y
         if whole_x != 0 or whole_y != 0:
-            self.user32.mouse_event(self.MOUSEEVENTF_MOVE, whole_x, whole_y, 0, 0)
+            self._send_mouse_inputs(self._mouse_input(self.MOUSEEVENTF_MOVE, whole_x, whole_y))
 
     def mouse_click(self, button: str) -> None:
         if button == "right":
             down, up = self.MOUSEEVENTF_RIGHTDOWN, self.MOUSEEVENTF_RIGHTUP
         else:
             down, up = self.MOUSEEVENTF_LEFTDOWN, self.MOUSEEVENTF_LEFTUP
-        self.user32.mouse_event(down, 0, 0, 0, 0)
-        time.sleep(0.025)
-        self.user32.mouse_event(up, 0, 0, 0, 0)
+        self._send_mouse_inputs(self._mouse_input(down), self._mouse_input(up))
 
     def mouse_wheel(self, delta: int) -> None:
-        self.user32.mouse_event(self.MOUSEEVENTF_WHEEL, 0, 0, int(delta), 0)
+        self._send_mouse_inputs(
+            self._mouse_input(self.MOUSEEVENTF_WHEEL, data=ctypes.c_uint32(delta).value)
+        )
+
+    def _mouse_input(self, flags: int, dx: int = 0, dy: int = 0, data: int = 0) -> _INPUT:
+        return _INPUT(
+            type=self.INPUT_MOUSE,
+            mi=_MOUSEINPUT(
+                dx=dx,
+                dy=dy,
+                mouseData=data,
+                dwFlags=flags,
+                time=0,
+                dwExtraInfo=0,
+            ),
+        )
+
+    def _send_mouse_inputs(self, *events: _INPUT) -> None:
+        inputs = (_INPUT * len(events))(*events)
+        sent = self.user32.SendInput(len(events), inputs, ctypes.sizeof(_INPUT))
+        if sent != len(events):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def power(self, action: str) -> None:
         commands = {

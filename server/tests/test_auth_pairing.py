@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from phone_remote import auth
 from phone_remote.auth import CredentialStore
 from phone_remote.pairing import PairingError, PairingManager, PairingRateLimited
 from phone_remote.state import StateStore
@@ -36,6 +37,29 @@ def test_independent_revocation_and_revoke_all(credentials: CredentialStore) -> 
     assert credentials.revoke_all() == 1
     assert credentials.authenticate(second.credential) is None
     assert credentials.revoke("missing") is False
+
+
+def test_repeated_authentication_uses_cache_and_revocation_invalidates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = StateStore(tmp_path / "state.json")
+    issued = CredentialStore(state).issue("Phone", "android")
+    calls = 0
+    original = auth._verifier
+
+    def counted(secret: str, salt: bytes) -> bytes:
+        nonlocal calls
+        calls += 1
+        return original(secret, salt)
+
+    monkeypatch.setattr(auth, "_verifier", counted)
+    reloaded = CredentialStore(state)
+
+    assert reloaded.authenticate(issued.credential) is not None
+    assert reloaded.authenticate(issued.credential) is not None
+    assert calls == 1
+    assert reloaded.revoke(issued.client_id)
+    assert reloaded.authenticate(issued.credential) is None
 
 
 @pytest.mark.parametrize(

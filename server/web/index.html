@@ -499,6 +499,7 @@
         // Ignore a response sent with an older credential. It may finish while
         // a new pairing session is open or after the replacement credential is saved.
         if (requestCredential !== credential) return response;
+        discardPointerSocket();
         credential = '';
         localStorage.removeItem('phone-remote-credential');
         showPairing(t('credentialExpired'));
@@ -524,6 +525,7 @@
         });
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || t('pairingFailed'));
+        discardPointerSocket();
         credential = data.credential; pairedServerId = data.serverId; identityFingerprint = data.identityFingerprint;
         localStorage.setItem('phone-remote-credential', credential);
         localStorage.setItem('phone-remote-server-id', pairedServerId);
@@ -537,6 +539,7 @@
         const response = await fetch('/api/v1/info', { cache: 'no-store' });
         const data = await response.json();
         if (pairedServerId && (data.serverId !== pairedServerId || data.identityFingerprint !== identityFingerprint)) {
+          discardPointerSocket();
           credential = '';
           localStorage.removeItem('phone-remote-credential');
           showPairing(t('identityChanged'));
@@ -578,6 +581,14 @@
     }
     async function sendMouse(payload, quiet = false) {
       try {
+        if (payload.type === 'move' || payload.type === 'wheel') {
+          const socket = await pointerWebSocket();
+          if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(payload));
+            setConnection(true);
+            return true;
+          }
+        }
         const response = await apiFetch('/api/v1/mouse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -591,6 +602,51 @@
         if (!quiet) showToast(error.message || t('connectionFailed'), 1800);
         return false;
       }
+    }
+    let pointerSocket = null;
+    let pointerSocketPromise = null;
+    let pointerSocketRetryAt = 0;
+    function discardPointerSocket() {
+      const socket = pointerSocket;
+      pointerSocket = null;
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    }
+    async function pointerWebSocket() {
+      if (pointerSocket?.readyState === WebSocket.OPEN) return pointerSocket;
+      if (!credential || Date.now() < pointerSocketRetryAt) return null;
+      if (pointerSocketPromise) return pointerSocketPromise;
+      pointerSocketPromise = new Promise((resolve) => {
+        const url = new URL('/api/v1/pointer', window.location.href);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(url, ['phone-remote.v1', `auth.${credential}`]);
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          failed();
+          try { socket.close(); } catch (_) { /* Connection is still opening. */ }
+        }, 2000);
+        const failed = () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          if (pointerSocket === socket) pointerSocket = null;
+          pointerSocketRetryAt = Date.now() + 5000;
+          resolve(null);
+        };
+        socket.addEventListener('open', () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          pointerSocket = socket;
+          pointerSocketRetryAt = 0;
+          resolve(socket);
+        }, { once: true });
+        socket.addEventListener('error', failed, { once: true });
+        socket.addEventListener('close', () => {
+          if (!settled) failed();
+          if (pointerSocket === socket) pointerSocket = null;
+        });
+      }).finally(() => { pointerSocketPromise = null; });
+      return pointerSocketPromise;
     }
     async function sendKeyboardText() {
       const value = keyboardInput.value;

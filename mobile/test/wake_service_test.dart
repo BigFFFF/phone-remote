@@ -63,7 +63,7 @@ void main() {
 
   test('reports a missing or malformed MAC without opening a socket', () async {
     final service = UdpWakeService(
-      sender: (_, __, ___) async => fail('sender must not be called'),
+      sender: (_, _, _) async => fail('sender must not be called'),
     );
 
     final capability = await service.capability(_device(mac: 'invalid'));

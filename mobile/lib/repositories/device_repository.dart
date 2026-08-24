@@ -19,10 +19,9 @@ abstract interface class DeviceRepository {
 
 class RealDeviceRepository implements DeviceRepository {
   RealDeviceRepository({
-    required MetadataStorage metadataStorage,
-    required CredentialStorage credentialStorage,
-  })  : _metadataStorage = metadataStorage,
-        _credentialStorage = credentialStorage;
+    required this._metadataStorage,
+    required this._credentialStorage,
+  });
 
   static const _devicesKey = 'phone_remote.devices.v1';
 

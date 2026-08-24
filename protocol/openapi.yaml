@@ -128,6 +128,23 @@ paths:
         "200": { $ref: "#/components/responses/ActionAccepted" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /pointer:
+    get:
+      operationId: streamPointerEvents
+      summary: Upgrade to the low-latency pointer WebSocket.
+      description: |
+        The native client authenticates the WebSocket handshake with the bearer credential.
+        Browser clients use the `phone-remote.v1` subprotocol plus an `auth.<credential>`
+        subprotocol because browser WebSocket APIs cannot set Authorization headers. Text
+        frames contain MouseRequest objects whose type is `move` or `wheel`. Client frames
+        are masked, unfragmented, and at most 4096 bytes.
+      responses:
+        "101":
+          description: WebSocket connection established.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "426":
+          description: A WebSocket upgrade is required.
   /text:
     post:
       operationId: sendText

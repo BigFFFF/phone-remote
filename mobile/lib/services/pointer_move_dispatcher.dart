@@ -5,13 +5,11 @@ typedef PointerMoveErrorHandler = void Function(Object error);
 
 class PointerMoveDispatcher {
   PointerMoveDispatcher({
-    required PointerMoveSender send,
+    required this._send,
     this.interval = const Duration(milliseconds: 8),
-    this.maxConcurrentSends = 3,
-    PointerMoveErrorHandler? onError,
-  })  : assert(maxConcurrentSends > 0),
-        _send = send,
-        _onError = onError;
+    this.maxConcurrentSends = 1,
+    this._onError,
+  }) : assert(maxConcurrentSends > 0);
 
   final PointerMoveSender _send;
   final PointerMoveErrorHandler? _onError;
