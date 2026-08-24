@@ -1,5 +1,5 @@
 #define MyAppName "Phone Remote"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "BigFFFF"
 #define MyAppExeName "PhoneRemote.exe"
 #define ApiRuleName "Phone Remote API"

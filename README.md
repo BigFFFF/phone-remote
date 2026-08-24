@@ -15,8 +15,8 @@ Wake on LAN 等常用控制。
 
 ## 下载正式版
 
-- [Windows 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.3.0.exe)
-- [Android 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.3.0-android.apk)
+- [Windows 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.4.0.exe)
+- [Android 安装包](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.4.0-android.apk)
 - [版本说明与校验文件](https://github.com/BigFFFF/phone-remote/releases/latest)
 
 Windows 与 Android 端需要安装在同一可信局域网内。首次连接请按 Windows 托盘程序显示的
