@@ -1353,7 +1353,7 @@ class _SettingsPage extends StatelessWidget {
         const Divider(),
         const ListTile(
           leading: Icon(Icons.info_outline_rounded),
-          title: Text('Phone Remote 1.3.0'),
+          title: Text('Phone Remote 1.4.0'),
           subtitle: Text('Mobile API v1'),
         ),
       ],

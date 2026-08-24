@@ -16,8 +16,8 @@ with no cloud account required and no need to expose the PC to the internet.
 
 ## Download the Stable Release
 
-- [Windows installer](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.3.0.exe)
-- [Android APK](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.3.0-android.apk)
+- [Windows installer](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemoteSetup-v1.4.0.exe)
+- [Android APK](https://github.com/BigFFFF/phone-remote/releases/latest/download/PhoneRemote-v1.4.0-android.apk)
 - [Release notes and checksums](https://github.com/BigFFFF/phone-remote/releases/latest)
 
 The Windows and Android devices must be connected to the same trusted local network. On the first
