@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "All rights reserved" }
 dependencies = [
-  "cryptography>=43,<47",
+  "cryptography>=43,<51",
   "Pillow>=10,<13",
   "pystray>=0.19,<1",
   "zeroconf>=0.132,<1",
