@@ -2,7 +2,7 @@ altgraph==0.17.5
 cffi==2.1.1
 colorama==0.4.6
 coverage==7.15.4
-cryptography==46.0.7
+cryptography==50.0.0
 ifaddr==0.2.0
 iniconfig==2.3.0
 packaging==26.3
@@ -18,7 +18,7 @@ pytest==9.1.1
 pytest-cov==7.1.0
 pywin32-ctypes==0.2.3
 PyYAML==6.0.3
-ruff==0.16.3
+ruff==0.16.4
 setuptools==84.0.0
 six==1.17.0
 zeroconf==0.150.0

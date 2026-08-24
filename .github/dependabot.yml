@@ -5,18 +5,38 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions-non-major:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: pip
     directory: /server
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      python-non-major:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: pub
     directory: /mobile
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      flutter-non-major:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Version 11 requires Android API 37, which is not in the stable SDK channel yet.
+      - dependency-name: flutter_secure_storage
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: gradle
     directory: /mobile/android
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      android-toolchain-non-major:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
